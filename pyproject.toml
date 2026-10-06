@@ -30,6 +30,7 @@ studio = [
   "python-multipart>=0.0.12",
 ]
 test = [
+  "httpx2>=0.1",
   "pytest>=8",
 ]
 
