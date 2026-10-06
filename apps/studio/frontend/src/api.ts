@@ -4,6 +4,36 @@ export function apiUrl(path: string) {
   return path
 }
 
+function fieldLabel(location: unknown): string {
+  if (!Array.isArray(location)) return ''
+  const field = location.filter((part) => part !== 'body').at(-1)
+  if (typeof field !== 'string') return ''
+  return field
+    .replace(/_px$/, '')
+    .replaceAll('_', ' ')
+    .replace(/^./, (letter) => letter.toUpperCase())
+}
+
+function errorDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail)) {
+    const messages = detail.flatMap((item) => {
+      if (typeof item === 'string') return item
+      if (!item || typeof item !== 'object') return []
+      const issue = item as { loc?: unknown; msg?: unknown }
+      if (typeof issue.msg !== 'string') return []
+      const label = fieldLabel(issue.loc)
+      return label ? `${label}: ${issue.msg}` : issue.msg
+    })
+    if (messages.length) return messages.join('; ')
+  }
+  if (detail && typeof detail === 'object' && 'msg' in detail) {
+    const message = (detail as { msg?: unknown }).msg
+    if (typeof message === 'string') return message
+  }
+  return fallback
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const target = apiUrl(path)
   let response: Response
@@ -14,7 +44,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(payload.detail || `Request failed with status ${response.status}`)
+    throw new Error(errorDetail(payload.detail, `Request failed with status ${response.status}`))
   }
   return response.json() as Promise<T>
 }

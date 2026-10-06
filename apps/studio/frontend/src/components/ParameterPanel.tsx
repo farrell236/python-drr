@@ -88,8 +88,8 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
         <Slider label="Source–isocenter" field="sid_mm" value={settings.sid_mm} min={300} max={2000} step={10} unit="mm" onChange={numeric} />
         <Slider label="Isocenter–detector" field="idd_mm" value={settings.idd_mm} min={0} max={1500} step={10} unit="mm" onChange={numeric} />
         <div className="field-grid">
-          <NumberInput label="Detector width" value={settings.detector_width_px} min={16} max={1024} unit="px" onChange={(value) => numeric('detector_width_px', value)} />
-          <NumberInput label="Detector height" value={settings.detector_height_px} min={16} max={1024} unit="px" onChange={(value) => numeric('detector_height_px', value)} />
+          <NumberInput label="Detector width" value={settings.detector_width_px} min={16} max={2048} unit="px" onChange={(value) => numeric('detector_width_px', value)} />
+          <NumberInput label="Detector height" value={settings.detector_height_px} min={16} max={2048} unit="px" onChange={(value) => numeric('detector_height_px', value)} />
           <NumberInput label="Column spacing" value={settings.detector_col_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" onChange={(value) => numeric('detector_col_spacing_mm', value)} />
           <NumberInput label="Row spacing" value={settings.detector_row_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" onChange={(value) => numeric('detector_row_spacing_mm', value)} />
         </div>
