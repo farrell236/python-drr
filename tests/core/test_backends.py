@@ -1,3 +1,4 @@
+import importlib.util
 import unittest
 from unittest import mock
 
@@ -32,6 +33,7 @@ class BackendSelectionTests(unittest.TestCase):
 
 
 class TorchProjectorTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("torch"), "PyTorch is not installed")
     def test_tensor_projector_matches_cpu_siddon_projector(self):
         data = np.arange(6 * 7 * 8, dtype=np.float32).reshape(6, 7, 8)
         volume = Volume(
