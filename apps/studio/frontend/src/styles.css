@@ -101,6 +101,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .connection-field input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 13%, transparent); }
 .connection-error { margin: 0; display: grid; gap: 5px; }
 .connection-error small { color: inherit; font-size: 9px; opacity: .8; }
+.connection-error a { color: inherit; font-weight: 650; }
 .local-setup { display: grid; gap: 6px; padding: 12px; border-radius: 10px; background: var(--panel-deep); }
 .local-setup > span { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; font-size: 11px; }
 .local-setup > span svg { width: 15px; height: 15px; color: var(--blue); }

@@ -64,7 +64,7 @@ export function UploadPanel({ busy, error, runtime, runtimeError, apiBase, conne
                 </button>
               </div>
             </form>
-            {runtimeError && <div className="error-message connection-error" role="alert">{runtimeError}<small>If prompted, allow this page to access devices on your local network.</small></div>}
+            {runtimeError && <div className="error-message connection-error" role="alert">{runtimeError}<small>If prompted, allow local-network access, or <a href={apiBase}>open the local Studio</a>.</small></div>}
             <div className="local-setup">
               <span><Terminal /><b>Start the local service</b></span>
               <code>python -m pip install &quot;python-drr[studio] @ git+https://github.com/farrell236/python-drr.git&quot;</code>
