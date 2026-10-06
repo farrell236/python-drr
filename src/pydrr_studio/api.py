@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -14,9 +14,6 @@ from .models import (
     JobInfo,
     RenderSettings,
     RuntimeInfo,
-    RuntimeInstallInfo,
-    RuntimeInstallRequest,
-    RuntimeSelection,
     VolumeInfo,
 )
 from .runtime import runtime_manager
@@ -24,15 +21,6 @@ from .service import StudioService
 
 
 service = StudioService(runtime_manager)
-
-ALLOWED_BROWSER_ORIGINS = {
-    "https://farrell236.github.io",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8765",
-    "http://127.0.0.1:8765",
-}
-
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -42,27 +30,16 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="PyDRR Studio", version="0.1.0", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=sorted(ALLOWED_BROWSER_ORIGINS),
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_private_network=True,
-)
 
 
 @app.middleware("http")
 async def protect_loopback_api(request: Request, call_next):
-    """Reject browser calls from sites other than the Studio and its dev server."""
+    """Only accept browser-originated requests from a loopback-hosted Studio."""
     origin = request.headers.get("origin")
-    if origin and origin not in ALLOWED_BROWSER_ORIGINS:
+    hostname = urlsplit(origin).hostname if origin else None
+    if origin and hostname not in {"localhost", "127.0.0.1", "::1"}:
         return JSONResponse(status_code=403, content={"detail": "Origin is not allowed"})
-
-    response = await call_next(request)
-    if request.headers.get("access-control-request-private-network") == "true":
-        response.headers["Access-Control-Allow-Private-Network"] = "true"
-    return response
+    return await call_next(request)
 
 
 @app.get("/api/health")
@@ -76,30 +53,6 @@ def runtime() -> RuntimeInfo:
         return runtime_manager.info()
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.post("/api/runtime/select", response_model=RuntimeInfo)
-def select_runtime(selection: RuntimeSelection) -> RuntimeInfo:
-    try:
-        return runtime_manager.select(selection.python_executable)
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@app.post("/api/runtime/install", response_model=RuntimeInstallInfo, status_code=202)
-def install_runtime(request: RuntimeInstallRequest) -> RuntimeInstallInfo:
-    try:
-        return runtime_manager.start_install(request.backend)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@app.get("/api/runtime/install/{install_id}", response_model=RuntimeInstallInfo)
-def runtime_install_status(install_id: str) -> RuntimeInstallInfo:
-    try:
-        return runtime_manager.install_info(install_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Installation not found") from exc
 
 
 @app.post("/api/volumes", response_model=VolumeInfo)

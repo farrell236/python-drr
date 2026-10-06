@@ -19,17 +19,12 @@ directly from GitHub:
 python -m pip install "python-drr @ git+https://github.com/farrell236/python-drr.git"
 ```
 
-Extras can be selected in the same direct reference:
+This installs the Python API, command-line interface, CPU renderer, and the
+accelerator runtime for the current platform: PyTorch for Apple Silicon MPS or
+CuPy for CUDA on supported Linux and Windows systems. To include Studio:
 
 ```bash
-# Apple Silicon GPU
-python -m pip install "python-drr[mps] @ git+https://github.com/farrell236/python-drr.git"
-
-# NVIDIA CUDA
-python -m pip install "python-drr[cuda] @ git+https://github.com/farrell236/python-drr.git"
-
-# Studio with Apple Silicon GPU support
-python -m pip install "python-drr[studio,mps] @ git+https://github.com/farrell236/python-drr.git"
+python -m pip install "python-drr[studio] @ git+https://github.com/farrell236/python-drr.git"
 ```
 
 From a cloned repository, install the local checkout instead:
@@ -38,20 +33,14 @@ From a cloned repository, install the local checkout instead:
 python -m pip install .
 ```
 
-The equivalent local extras are:
+The equivalent local installations are:
 
 ```bash
-# Apple Silicon GPU
-python -m pip install ".[mps]"
-
-# NVIDIA CUDA
-python -m pip install ".[cuda]"
-
 # Local Studio service and bundled web application
 python -m pip install ".[studio]"
 
 # Editable development installation
-python -m pip install -e ".[studio,mps,test]"
+python -m pip install -e ".[studio,test]"
 ```
 
 ## Command line
@@ -109,31 +98,27 @@ behavior and emit a deprecation warning.
 
 ## Studio
 
-PyDRR Studio separates its public interface from its local compute service.
-Install and start PyDRR on the machine that will perform the rendering:
+PyDRR Studio is a local browser application. Install the Studio extra and start
+it from the Python environment that will perform the rendering:
 
 ```bash
-# Run this from a cloned repository. The GitHub install command is above.
-python -m pip install ".[studio,mps]"
-pydrr-studio --port 8765
+python -m pip install ".[studio]"
+pydrr-studio
 ```
 
-Then open the [hosted Studio](https://farrell236.github.io/python-drr/), click
-**Connect**, and allow local-network access if the browser asks. Studio connects
-to `http://127.0.0.1:8765`. The service also serves the same interface at that
-local address as an offline fallback. NIfTI volumes and generated results travel
-directly between the browser and the loopback service; GitHub Pages does not
-receive them.
+The command starts the loopback server and opens `http://127.0.0.1:8765` in the
+default browser. Use `pydrr-studio --no-browser` to start the service without
+opening a browser. NIfTI volumes and generated results stay on the local
+machine.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for deployment
 and development instructions.
 
-The Performance panel can probe another Python executable, install the core
-rendering packages and the selected accelerator package with that
-interpreter's `pip`, and use it for subsequent projection and batch workers.
-The local FastAPI service remains in its original environment while compute
-jobs run in the selected environment.
+The Performance panel reports the active Python executable and detected compute
+devices. Users can select automatic resolution or explicitly force CPU, CUDA,
+or MPS. Projection and batch workers run in isolated subprocesses using the
+same Python environment that launched Studio.
 
 ## Repository layout
 

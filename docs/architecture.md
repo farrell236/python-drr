@@ -1,51 +1,53 @@
 # Architecture
 
-PyDRR is split into a reusable rendering library and optional applications.
-The installable distribution is named `python-drr`; the import package and core
-command remain `pydrr`.
+PyDRR is split into a reusable rendering library and an optional local browser
+application. The installable distribution is named `python-drr`; the import
+package and core command remain `pydrr`.
 
 ```text
-GitHub Pages (static React Studio)
-               |
-               | browser requests to http://127.0.0.1:8765
-               v
-local pydrr_studio API -> selected Python worker -> pydrr
-local CLI ------------------------------------------> pydrr
-Python applications -------------------------------> pydrr
+local browser <----------> local pydrr_studio API
+                                |
+                                v
+                     isolated Python worker
+                                |
+                                v
+                              pydrr
+
+local CLI -------------------> pydrr
+Python applications ---------> pydrr
 ```
 
 ## `pydrr`
 
 The core package owns volume I/O, physical geometry, projection algorithms,
-backend discovery, image normalization, and the command-line interface. It
-does not import FastAPI or contain browser and job-management concepts.
+backend discovery, image normalization, and the command-line interface. Its
+required dependencies include the CPU renderer and the accelerator runtime
+applicable to the current platform. It does not import FastAPI or contain
+browser and job-management concepts.
 
 Rendering backends live under `pydrr.backends`:
 
 - `cpu.py` contains the reference Siddon/Jacobs projector.
-- `cuda.py` contains the optional CuPy CUDA kernel.
-- `mps.py` contains the optional PyTorch Apple Metal projector.
+- `cuda.py` contains the CuPy CUDA kernel.
+- `mps.py` contains the PyTorch Apple Metal projector.
 - `registry.py` reports availability and resolves `auto` selections.
 
 ## `pydrr_studio`
 
-The Studio package owns the loopback API, local uploads, background jobs,
-result archives, runtime diagnostics, and Python environment management. It
-depends on `pydrr`. Render and batch jobs run in an external worker launched by
-the Python executable selected in the Performance panel. Studio probes and
-installs dependencies with that same interpreter, so device availability and
-job execution use one environment.
+The `studio` installation extra adds FastAPI, Uvicorn, and multipart upload
+support. The Studio package owns the loopback API, local uploads, background
+jobs, result archives, and runtime diagnostics. It depends on `pydrr` for all
+geometry, backend discovery, and rendering behavior.
 
-The React/vtk.js source is maintained separately in `apps/studio/frontend`.
-GitHub Pages serves its static build. The same build is generated under
-`pydrr_studio/static` and included in Python wheels as a local/offline fallback.
-The browser sends data directly to the loopback API; the static host never
-handles NIfTI files or rendering results. The API permits the official GitHub
-Pages origin and local development origins only.
+The React/vtk.js source is maintained in `apps/studio/frontend`. Its production
+build is generated under `pydrr_studio/static` and included in Python wheels.
+`pydrr-studio` starts the loopback service, serves that build, and opens it in
+the user's browser. The frontend and API therefore share one local origin;
+there is no hosted frontend or public-to-loopback connection.
 
-The hosted frontend waits for an explicit **Connect** action before contacting
-loopback. Browsers may request local-network permission for that connection. If
-the hosted page cannot reach the API, it links to the bundled frontend at
-`http://127.0.0.1:8765`.
+Render and batch jobs run in external subprocesses for cancellation and failure
+isolation. Each worker uses the same Python executable that launched Studio, so
+the CLI, Python API, and Studio see the same installed backends. Studio never
+changes Python environments or installs dependencies.
 
 The core package must never import `pydrr_studio`.

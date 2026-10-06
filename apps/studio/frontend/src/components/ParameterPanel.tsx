@@ -1,6 +1,5 @@
-import { ChevronDown, LoaderCircle, PackagePlus, Play, RotateCcw, Share2, Zap } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { acquisitionExportUrl, getRuntime, installRuntime, selectRuntime, waitForRuntimeInstall } from '../api'
+import { ChevronDown, RotateCcw, Share2, Zap } from 'lucide-react'
+import { acquisitionExportUrl } from '../api'
 import type { BackendName, RenderSettings, RuntimeInfo } from '../types'
 
 interface Props {
@@ -12,7 +11,6 @@ interface Props {
   volumeFilename: string
   runtime: RuntimeInfo | null
   runtimeError: string | null
-  onRuntimeChange: (runtime: RuntimeInfo) => void
 }
 
 type NumericKey = {
@@ -52,17 +50,7 @@ function filenameStem(filename: string) {
   return filename.replace(/\.nii(?:\.gz)?$/i, '').replace(/[^a-z0-9._-]+/gi, '_') || 'volume'
 }
 
-export function ParameterPanel({ settings, busy, onChange, onRender, onReset, volumeFilename, runtime, runtimeError, onRuntimeChange }: Props) {
-  const [pythonPath, setPythonPath] = useState(runtime?.python_executable || '')
-  const [runtimeAction, setRuntimeAction] = useState<'selecting' | 'installing' | null>(null)
-  const [runtimeActionMessage, setRuntimeActionMessage] = useState<string | null>(null)
-  const [runtimeActionError, setRuntimeActionError] = useState<string | null>(null)
-  const [runtimeInstallOutput, setRuntimeInstallOutput] = useState('')
-
-  useEffect(() => {
-    if (runtime?.python_executable) setPythonPath(runtime.python_executable)
-  }, [runtime?.python_executable])
-
+export function ParameterPanel({ settings, busy, onChange, onRender, onReset, volumeFilename, runtime, runtimeError }: Props) {
   const numeric = (field: NumericKey, value: number) => onChange({ ...settings, [field]: value })
   const patch = (values: Partial<RenderSettings>) => onChange({ ...settings, ...values })
   const preset = (angle: number) => patch({ projection_angle_deg: angle, orbit_tilt_x_deg: 0, orbit_tilt_y_deg: 0, detector_roll_deg: 0 })
@@ -73,61 +61,9 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
     ? runtime?.backends.find((backend) => backend.id === runtime.resolved_backend)
     : runtime?.backends.find((backend) => backend.id === settings.backend)
   const resolvedLabel = selectedBackend?.label || (settings.backend === 'auto' ? 'detecting backend' : settings.backend.toUpperCase())
-  const corePackages = runtime?.packages.filter((item) => item.required) || []
-  const acceleratorPackages = runtime?.packages.filter((item) => {
-    if (!['torch', 'cupy'].includes(item.distribution)) return false
-    if (item.installed) return true
-    if (settings.backend === 'mps') return item.distribution === 'torch'
-    if (settings.backend === 'cuda') return item.distribution === 'cupy'
-    return settings.backend === 'auto' && runtime.platform.toLowerCase().includes('macos') && item.distribution === 'torch'
-  }) || []
-  const hasCustomPython = !!pythonPath && !runtime?.candidates.some((item) => item.python_executable === pythonPath)
+  const acceleratorPackages = runtime?.packages.filter((item) => ['torch', 'cupy'].includes(item.distribution) && item.installed) || []
   const selectedBackendReady = settings.backend === 'auto' || selectedBackend?.available === true
   const renderReady = runtime?.ready === true && selectedBackendReady
-  const autoMpsMissing = settings.backend === 'auto'
-    && runtime?.platform.toLowerCase().includes('macos')
-    && !runtime.packages.some((item) => item.distribution === 'torch' && item.installed)
-  const installLabel = autoMpsMissing
-    ? 'Install MPS support'
-    : runtime?.ready && selectedBackendReady ? 'Repair packages' : 'Install packages'
-
-  const choosePython = async () => {
-    if (!pythonPath.trim()) return
-    setRuntimeAction('selecting')
-    setRuntimeActionError(null)
-    setRuntimeActionMessage('Inspecting Python environment…')
-    try {
-      const info = await selectRuntime(pythonPath.trim())
-      onRuntimeChange(info)
-      setRuntimeActionMessage(info.ready ? 'Python environment selected' : info.status)
-    } catch (selectionError) {
-      setRuntimeActionError(selectionError instanceof Error ? selectionError.message : 'Could not inspect this Python environment')
-    } finally {
-      setRuntimeAction(null)
-    }
-  }
-
-  const installPackages = async () => {
-    setRuntimeAction('installing')
-    setRuntimeActionError(null)
-    setRuntimeInstallOutput('')
-    setRuntimeActionMessage('Starting dependency installation…')
-    try {
-      const started = await installRuntime(settings.backend)
-      const completed = await waitForRuntimeInstall(started.id, (update) => {
-        setRuntimeActionMessage(update.message)
-        setRuntimeInstallOutput(update.output)
-      })
-      if (completed.status === 'failed') throw new Error(completed.message)
-      const info = await getRuntime()
-      onRuntimeChange(info)
-      setRuntimeActionMessage(completed.message)
-    } catch (installError) {
-      setRuntimeActionError(installError instanceof Error ? installError.message : 'Dependency installation failed')
-    } finally {
-      setRuntimeAction(null)
-    }
-  }
 
   return (
     <aside className="parameter-panel">
@@ -192,49 +128,13 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
 
       <details>
         <summary>Performance <ChevronDown /></summary>
-        <div className="runtime-picker">
-          <label className="select-field">
-            <span>Python environment</span>
-            <select
-              value={pythonPath}
-              disabled={busy || runtimeAction !== null}
-              onChange={(event) => setPythonPath(event.target.value)}
-            >
-              {runtime?.candidates.map((candidate) => (
-                <option key={candidate.python_executable} value={candidate.python_executable}>
-                  {candidate.label}{candidate.is_server_python ? ' — server' : ''}
-                </option>
-              ))}
-              {hasCustomPython && <option value={pythonPath}>Custom Python</option>}
-            </select>
-          </label>
-          <label className="path-field">
-            <span>Executable path</span>
-            <input
-              value={pythonPath}
-              disabled={busy || runtimeAction !== null}
-              spellCheck={false}
-              placeholder="/path/to/environment/bin/python"
-              onChange={(event) => setPythonPath(event.target.value)}
-            />
-          </label>
-          <div className="runtime-actions">
-            <button type="button" className="button secondary compact" disabled={busy || runtimeAction !== null || !pythonPath.trim()} onClick={() => void choosePython()}>
-              {runtimeAction === 'selecting' ? <LoaderCircle className="spin" /> : <Play />} Use Python
-            </button>
-            <button type="button" className="button secondary compact" disabled={busy || runtimeAction !== null || !runtime || pythonPath !== runtime.python_executable} onClick={() => void installPackages()}>
-              {runtimeAction === 'installing' ? <LoaderCircle className="spin" /> : <PackagePlus />} {installLabel}
-            </button>
-          </div>
-          <small>Renders run in a separate process launched by this interpreter.</small>
-        </div>
         <label className="select-field">
           <span>Compute device</span>
-          <select value={settings.backend} disabled={runtimeAction !== null} onChange={(event) => patch({ backend: event.target.value as BackendName })}>
+          <select value={settings.backend} disabled={busy || !runtime} onChange={(event) => patch({ backend: event.target.value as BackendName })}>
             <option value="auto">Automatic{runtime ? ` — ${runtime.resolved_backend.toUpperCase()}` : ''}</option>
             {runtime?.backends.map((backend) => (
-              <option key={backend.id} value={backend.id}>
-                {backend.label}{backend.available ? '' : ' — install required'}
+              <option key={backend.id} value={backend.id} disabled={!backend.available}>
+                {backend.label}{backend.available ? '' : ' — unavailable'}
               </option>
             )) || <>
               <option value="mps">Apple GPU (MPS)</option>
@@ -244,33 +144,28 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
           </select>
         </label>
         {(settings.backend === 'cpu' || (settings.backend === 'auto' && runtime?.resolved_backend === 'cpu')) && <NumberInput label="CPU workers" value={settings.cpu_workers} min={1} max={64} unit="" onChange={(value) => numeric('cpu_workers', value)} />}
-        <div className={`runtime-card ${runtime?.ready === false || runtimeError || runtimeActionError ? 'warning' : ''}`}>
+        <div className={`runtime-card ${runtime?.ready === false || runtimeError ? 'warning' : ''}`}>
           <div className="runtime-heading">
             <span><b>{runtime?.status || (runtimeError ? 'Runtime check failed' : 'Checking Python runtime…')}</b>{runtime && <small>Python {runtime.python_version} · {runtime.architecture}</small>}</span>
             <i aria-hidden="true" />
           </div>
           {runtime && <code title={runtime.python_executable}>{runtime.python_executable}</code>}
           {runtimeError && <p>{runtimeError}</p>}
-          {runtimeActionMessage && <p className="runtime-message">{runtimeActionMessage}</p>}
-          {runtimeActionError && <p>{runtimeActionError}</p>}
           {runtime && <div className="runtime-packages" aria-label="Python package status">
-            <span className={corePackages.every((item) => item.installed) ? '' : 'missing'}>
-              Core {corePackages.filter((item) => item.installed).length}/{corePackages.length}
-            </span>
+            {runtime.backends.map((backend) => <span key={backend.id} className={backend.available ? '' : 'missing'}>{backend.label} · {backend.available ? 'ready' : 'unavailable'}</span>)}
             {acceleratorPackages.map((item) => (
-              <span key={item.distribution} className={item.installed ? '' : 'missing'}>
-                {item.name} {item.version || 'not installed'}
+              <span key={item.distribution}>
+                {item.name} {item.version}
               </span>
             ))}
           </div>}
-          {runtimeActionError && runtimeInstallOutput && <details className="runtime-log"><summary>Installer output</summary><pre>{runtimeInstallOutput}</pre></details>}
         </div>
         <p className="field-note">{selectedBackend?.detail || 'Automatic prefers NVIDIA CUDA, then Apple Metal, then CPU.'} Use smaller previews while positioning; 512 px CPU projections can take substantially longer.</p>
       </details>
 
       <div className="parameter-footer">
         <span className={renderReady ? '' : 'not-ready'}><i />{busy ? 'Rendering…' : renderReady ? `${resolvedLabel} ready` : 'Python or device packages required'}</span>
-        <button type="button" className="button primary full" disabled={busy || runtimeAction !== null || !renderReady} onClick={onRender}><Zap /> Render projection</button>
+        <button type="button" className="button primary full" disabled={busy || !renderReady} onClick={onRender}><Zap /> Render projection</button>
       </div>
     </aside>
   )

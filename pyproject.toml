@@ -15,15 +15,12 @@ dependencies = [
   "scipy>=1.13",
   "tqdm>=4.66",
   "imageio>=2.35",
+  "torch>=2.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
+  "cupy-cuda12x; platform_system == 'Linux' and platform_machine == 'x86_64'",
+  "cupy-cuda12x; platform_system == 'Windows' and platform_machine == 'AMD64'",
 ]
 
 [project.optional-dependencies]
-mps = [
-  "torch>=2.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
-]
-cuda = [
-  "cupy-cuda12x; platform_system != 'Darwin'",
-]
 studio = [
   "fastapi>=0.141",
   "uvicorn[standard]>=0.30",

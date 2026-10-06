@@ -10,22 +10,19 @@ class ApiSecurityTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.client = TestClient(app)
 
-    def test_github_pages_origin_can_preflight_loopback_api(self) -> None:
-        response = self.client.options(
-            "/api/runtime",
-            headers={
-                "Origin": "https://farrell236.github.io",
-                "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Private-Network": "true",
-            },
+    def test_loopback_browser_origin_is_allowed(self) -> None:
+        response = self.client.get(
+            "/api/health",
+            headers={"Origin": "http://127.0.0.1:9123"},
         )
-
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.headers["access-control-allow-origin"],
-            "https://farrell236.github.io",
+
+    def test_former_github_pages_origin_is_rejected(self) -> None:
+        response = self.client.get(
+            "/api/health",
+            headers={"Origin": "https://farrell236.github.io"},
         )
-        self.assertEqual(response.headers["access-control-allow-private-network"], "true")
+        self.assertEqual(response.status_code, 403)
 
     def test_untrusted_browser_origin_is_rejected(self) -> None:
         response = self.client.get(

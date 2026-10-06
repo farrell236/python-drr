@@ -92,8 +92,6 @@ export interface PackageInfo {
 
 export interface RuntimeInfo {
   python_executable: string
-  server_python_executable: string
-  is_server_python: boolean
   python_version: string
   architecture: string
   platform: string
@@ -102,18 +100,4 @@ export interface RuntimeInfo {
   resolved_backend: Exclude<BackendName, 'auto'>
   backends: BackendInfo[]
   packages: PackageInfo[]
-  candidates: PythonCandidate[]
-}
-
-export interface PythonCandidate {
-  label: string
-  python_executable: string
-  is_server_python: boolean
-}
-
-export interface RuntimeInstallInfo {
-  id: string
-  status: 'queued' | 'running' | 'completed' | 'failed'
-  message: string
-  output: string
 }

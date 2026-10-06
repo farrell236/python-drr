@@ -1,6 +1,6 @@
 import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Upload, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { cancelJob, createBatch, createRender, getApiBase, getRuntime, setApiBase, uploadVolume, usesSameOriginApi, waitForJob } from './api'
+import { cancelJob, createBatch, createRender, getRuntime, uploadVolume, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { ParameterPanel } from './components/ParameterPanel'
@@ -48,12 +48,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
-  const [apiBase, setApiBaseState] = useState(getApiBase())
-  const [connecting, setConnecting] = useState(usesSameOriginApi())
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!usesSameOriginApi()) return
     let active = true
     getRuntime()
       .then((info) => {
@@ -68,25 +65,8 @@ export default function App() {
           setRuntimeError(runtimeFailure instanceof Error ? runtimeFailure.message : 'Could not inspect the Python runtime')
         }
       })
-      .finally(() => { if (active) setConnecting(false) })
     return () => { active = false }
   }, [])
-
-  const connectRuntime = async (endpoint: string) => {
-    setConnecting(true)
-    setRuntimeError(null)
-    try {
-      const nextApiBase = setApiBase(endpoint)
-      setApiBaseState(nextApiBase)
-      const info = await getRuntime()
-      setRuntime(info)
-    } catch (runtimeFailure) {
-      setRuntime(null)
-      setRuntimeError(runtimeFailure instanceof Error ? runtimeFailure.message : 'Could not connect to the local PyDRR service')
-    } finally {
-      setConnecting(false)
-    }
-  }
 
   const busy = !!activeRender && ['queued', 'running'].includes(activeRender.status)
   const resultCount = jobs.filter((job) => job.status === 'completed').length
@@ -94,16 +74,6 @@ export default function App() {
 
   const addOrUpdateJob = (job: JobInfo) => {
     setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
-  }
-
-  const handleRuntimeChange = (info: RuntimeInfo) => {
-    setRuntime(info)
-    setRuntimeError(null)
-    setSettings((current) => {
-      if (current.backend === 'auto') return current
-      const available = info.backends.find((item) => item.id === current.backend)?.available
-      return available ? current : { ...current, backend: 'auto' }
-    })
   }
 
   const handleUpload = async (file: File) => {
@@ -163,7 +133,7 @@ export default function App() {
     setSavedViews((current) => [...current, { id: crypto.randomUUID(), name, settings: activeSettings, imageUrl: activeRender?.image_url || undefined }])
   }
 
-  if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} apiBase={apiBase} connecting={connecting} onConnect={connectRuntime} onChangeConnection={() => { setRuntime(null); setRuntimeError(null) }} onUpload={handleUpload} /></div>
+  if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} onUpload={handleUpload} /></div>
 
   return (
     <div className="app-shell">
@@ -195,7 +165,7 @@ export default function App() {
               <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
             </section>
           </div>
-          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onRuntimeChange={handleRuntimeChange} onChange={setSettings} onRender={() => void renderProjection()} onReset={() => setSettings({ ...DEFAULT_SETTINGS, volume_id: volume.id })} volumeFilename={volume.filename} />
+          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onReset={() => setSettings({ ...DEFAULT_SETTINGS, volume_id: volume.id })} volumeFilename={volume.filename} />
         </main>
       )}
 

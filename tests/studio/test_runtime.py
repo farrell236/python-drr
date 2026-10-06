@@ -14,17 +14,17 @@ from pydrr_studio.service import StudioService, VolumeRecord
 
 
 class StudioRuntimeTests(unittest.TestCase):
-    def test_runtime_manager_probes_and_selects_an_interpreter(self):
+    def test_runtime_manager_reports_the_server_interpreter(self):
         manager = RuntimeManager()
         try:
-            info = manager.select(sys.executable)
+            info = manager.info()
             self.assertTrue(info.ready)
             self.assertEqual(Path(info.python_executable), Path(sys.executable).absolute())
-            self.assertTrue(any(candidate.is_server_python for candidate in info.candidates))
+            self.assertTrue(any(backend.id == "cpu" and backend.available for backend in info.backends))
         finally:
             manager.close()
 
-    def test_render_worker_uses_the_selected_interpreter(self):
+    def test_render_worker_uses_the_server_interpreter(self):
         manager = RuntimeManager()
         service = StudioService(manager)
         try:

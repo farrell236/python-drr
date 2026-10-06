@@ -1,60 +1,16 @@
-import type { BackendName, BatchSettings, JobInfo, RenderSettings, RuntimeInfo, RuntimeInstallInfo, VolumeInfo } from './types'
-
-const API_STORAGE_KEY = 'pydrr-studio-api-base'
-const DEFAULT_LOCAL_API = 'http://127.0.0.1:8765'
-
-function isLoopback(hostname: string) {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
-}
-
-function initialApiBase() {
-  const stored = window.localStorage.getItem(API_STORAGE_KEY)
-  if (stored) return stored
-  return isLoopback(window.location.hostname) ? '' : DEFAULT_LOCAL_API
-}
-
-let apiBase = initialApiBase()
-
-export function getApiBase() {
-  return apiBase || window.location.origin
-}
-
-export function usesSameOriginApi() {
-  return apiBase === '' || apiBase === window.location.origin
-}
-
-export function setApiBase(value: string) {
-  const parsed = new URL(value.trim())
-  if (!['http:', 'https:'].includes(parsed.protocol) || !isLoopback(parsed.hostname)) {
-    throw new Error('PyDRR Studio can only connect to a service on localhost or 127.0.0.1')
-  }
-  apiBase = parsed.origin
-  window.localStorage.setItem(API_STORAGE_KEY, apiBase)
-  return apiBase
-}
+import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, VolumeInfo } from './types'
 
 export function apiUrl(path: string) {
-  return apiBase ? new URL(path, `${apiBase}/`).toString() : path
-}
-
-function localRequestOptions(options?: RequestInit): RequestInit {
-  if (!apiBase) return options || {}
-  return {
-    ...options,
-    credentials: 'omit',
-    // Newer browsers use this hint when asking permission to reach loopback
-    // services from a public HTTPS page. Older browsers ignore the field.
-    targetAddressSpace: 'loopback',
-  } as RequestInit
+  return path
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const target = apiUrl(path)
   let response: Response
   try {
-    response = await fetch(target, localRequestOptions(options))
+    response = await fetch(target, options)
   } catch (error) {
-    throw new Error(`Could not reach the local PyDRR service at ${getApiBase()}. Start pydrr-studio and try again.`, { cause: error })
+    throw new Error('Could not reach the local PyDRR service. Restart pydrr-studio and try again.', { cause: error })
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: response.statusText }))
@@ -79,38 +35,6 @@ export async function uploadVolume(file: File): Promise<VolumeInfo> {
 
 export function getRuntime(): Promise<RuntimeInfo> {
   return request('/api/runtime', { signal: AbortSignal.timeout(15000) })
-}
-
-export function selectRuntime(pythonExecutable: string): Promise<RuntimeInfo> {
-  return request('/api/runtime/select', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ python_executable: pythonExecutable }),
-  })
-}
-
-export function installRuntime(backend: BackendName): Promise<RuntimeInstallInfo> {
-  return request('/api/runtime/install', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ backend }),
-  })
-}
-
-export function getRuntimeInstall(id: string): Promise<RuntimeInstallInfo> {
-  return request(`/api/runtime/install/${id}`)
-}
-
-export async function waitForRuntimeInstall(
-  id: string,
-  onUpdate: (install: RuntimeInstallInfo) => void,
-): Promise<RuntimeInstallInfo> {
-  for (;;) {
-    const install = await getRuntimeInstall(id)
-    onUpdate(install)
-    if (['completed', 'failed'].includes(install.status)) return install
-    await new Promise((resolve) => window.setTimeout(resolve, 700))
-  }
 }
 
 export async function createRender(settings: RenderSettings): Promise<{ id: string }> {

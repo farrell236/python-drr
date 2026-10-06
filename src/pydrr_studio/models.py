@@ -38,16 +38,8 @@ class PackageInfo(BaseModel):
     required: bool
 
 
-class PythonCandidate(BaseModel):
-    label: str
-    python_executable: str
-    is_server_python: bool = False
-
-
 class RuntimeInfo(BaseModel):
     python_executable: str
-    server_python_executable: str
-    is_server_python: bool
     python_version: str
     architecture: str
     platform: str
@@ -56,22 +48,6 @@ class RuntimeInfo(BaseModel):
     resolved_backend: Literal["cpu", "cuda", "mps"]
     backends: list[BackendInfo]
     packages: list[PackageInfo]
-    candidates: list[PythonCandidate] = Field(default_factory=list)
-
-
-class RuntimeSelection(BaseModel):
-    python_executable: str
-
-
-class RuntimeInstallRequest(BaseModel):
-    backend: BackendName = "auto"
-
-
-class RuntimeInstallInfo(BaseModel):
-    id: str
-    status: Literal["queued", "running", "completed", "failed"]
-    message: str
-    output: str = ""
 
 
 class RenderSettings(BaseModel):
