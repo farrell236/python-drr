@@ -12,13 +12,33 @@ using a Siddon/Jacobs-style projector.
 
 ## Install
 
-From a cloned repository:
+Until the distribution is published on PyPI, install the current version
+directly from GitHub:
+
+```bash
+python -m pip install "python-drr @ git+https://github.com/farrell236/python-drr.git"
+```
+
+Extras can be selected in the same direct reference:
+
+```bash
+# Apple Silicon GPU
+python -m pip install "python-drr[mps] @ git+https://github.com/farrell236/python-drr.git"
+
+# NVIDIA CUDA
+python -m pip install "python-drr[cuda] @ git+https://github.com/farrell236/python-drr.git"
+
+# Studio with Apple Silicon GPU support
+python -m pip install "python-drr[studio,mps] @ git+https://github.com/farrell236/python-drr.git"
+```
+
+From a cloned repository, install the local checkout instead:
 
 ```bash
 python -m pip install .
 ```
 
-Optional backends and applications are installed as extras:
+The equivalent local extras are:
 
 ```bash
 # Apple Silicon GPU
@@ -27,7 +47,7 @@ python -m pip install ".[mps]"
 # NVIDIA CUDA
 python -m pip install ".[cuda]"
 
-# Local web application
+# Local Studio service and bundled web application
 python -m pip install ".[studio]"
 
 # Editable development installation
@@ -72,7 +92,8 @@ geometry = make_orbit_pose(
 projection = generate_drr(volume, geometry, backend="auto")
 ```
 
-See `examples/single_projection.py` for a complete example.
+See [`examples/single_projection.py`](examples/single_projection.py) for a
+complete example.
 
 ## Geometry convention
 
@@ -92,20 +113,21 @@ PyDRR Studio separates its public interface from its local compute service.
 Install and start PyDRR on the machine that will perform the rendering:
 
 ```bash
+# Run this from a cloned repository. The GitHub install command is above.
 python -m pip install ".[studio,mps]"
 pydrr-studio --port 8765
 ```
 
-Then open the hosted Studio at `https://farrell236.github.io/python-drr/` and connect
-it to `http://127.0.0.1:8765`. The service also serves the same interface at
-that local address as an offline fallback. NIfTI volumes and generated results
-travel directly between the browser and the loopback service; GitHub Pages
-does not receive them. A browser may ask for permission to access the local
-network the first time it connects.
+Then open the [hosted Studio](https://farrell236.github.io/python-drr/), click
+**Connect**, and allow local-network access if the browser asks. Studio connects
+to `http://127.0.0.1:8765`. The service also serves the same interface at that
+local address as an offline fallback. NIfTI volumes and generated results travel
+directly between the browser and the loopback service; GitHub Pages does not
+receive them.
 
 The installable distribution is named `python-drr`; the Python import and CLI
-remain `pydrr`. See `apps/studio/README.md` for deployment and development
-instructions.
+remain `pydrr`. See the [Studio README](apps/studio/README.md) for deployment
+and development instructions.
 
 The Performance panel can probe another Python executable, install the core
 rendering packages and the selected accelerator package with that

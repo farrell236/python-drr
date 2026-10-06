@@ -1,6 +1,8 @@
 # Architecture
 
 PyDRR is split into a reusable rendering library and optional applications.
+The installable distribution is named `python-drr`; the import package and core
+command remain `pydrr`.
 
 ```text
 GitHub Pages (static React Studio)
@@ -40,5 +42,10 @@ GitHub Pages serves its static build. The same build is generated under
 The browser sends data directly to the loopback API; the static host never
 handles NIfTI files or rendering results. The API permits the official GitHub
 Pages origin and local development origins only.
+
+The hosted frontend waits for an explicit **Connect** action before contacting
+loopback. Browsers may request local-network permission for that connection. If
+the hosted page cannot reach the API, it links to the bundled frontend at
+`http://127.0.0.1:8765`.
 
 The core package must never import `pydrr_studio`.

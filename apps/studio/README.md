@@ -21,17 +21,16 @@ it directly from GitHub:
 python -m pip install "python-drr[studio] @ git+https://github.com/farrell236/python-drr.git"
 ```
 
-The distribution is named `python-drr`; its Python import and command-line
-entry point remain `pydrr`.
+The distribution is named `python-drr`; its Python import remains `pydrr`, and
+the installed commands are `pydrr` and `pydrr-studio`.
 
-Open `https://farrell236.github.io/python-drr/` and connect to
-`http://127.0.0.1:8765`. The local URL also serves a bundled copy of the
+Open the [hosted Studio](https://farrell236.github.io/python-drr/), click
+**Connect**, and allow local-network access if the browser asks. Studio connects to
+`http://127.0.0.1:8765`. If the hosted page cannot reach loopback, use its
+**Open the local Studio** link. The local URL serves a bundled copy of the
 frontend for offline use. The service binds to loopback by default and accepts
 browser requests only from the official Pages origin and local development
 origins. Uploaded medical images and generated projections stay local.
-
-Some browsers ask for local-network permission when a public HTTPS page first
-contacts a loopback service. Allow that request for Studio to connect.
 
 The Performance panel reports the exact Python executable and packages used by
 render workers. Choose a discovered interpreter or enter the executable path
@@ -72,9 +71,10 @@ Rebuild and commit the directory whenever the frontend source changes.
 ## GitHub Pages deployment
 
 `.github/workflows/pages.yml` builds and deploys the frontend on every push to
-`main`. In the repository settings, set **Pages → Build and deployment →
-Source** to **GitHub Actions**. Vite uses relative asset URLs, so the build
-works beneath a project path such as `/python-drr/`.
+`main`. This repository's Pages source is already configured as **GitHub
+Actions**. A fork must select that source under **Pages → Build and deployment**
+in its repository settings. Vite uses relative asset URLs, so the build works
+beneath a project path such as `/python-drr/`.
 
 Uploaded volumes and generated results are kept in a temporary local session
 directory. Download a result archive to retain its PNG, NumPy data, and JSON
