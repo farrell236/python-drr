@@ -19,6 +19,10 @@ export function getApiBase() {
   return apiBase || window.location.origin
 }
 
+export function usesSameOriginApi() {
+  return apiBase === '' || apiBase === window.location.origin
+}
+
 export function setApiBase(value: string) {
   const parsed = new URL(value.trim())
   if (!['http:', 'https:'].includes(parsed.protocol) || !isLoopback(parsed.hostname)) {
@@ -74,7 +78,7 @@ export async function uploadVolume(file: File): Promise<VolumeInfo> {
 }
 
 export function getRuntime(): Promise<RuntimeInfo> {
-  return request('/api/runtime')
+  return request('/api/runtime', { signal: AbortSignal.timeout(15000) })
 }
 
 export function selectRuntime(pythonExecutable: string): Promise<RuntimeInfo> {

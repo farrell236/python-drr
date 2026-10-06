@@ -1,6 +1,6 @@
 import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Upload, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { cancelJob, createBatch, createRender, getApiBase, getRuntime, setApiBase, uploadVolume, waitForJob } from './api'
+import { cancelJob, createBatch, createRender, getApiBase, getRuntime, setApiBase, uploadVolume, usesSameOriginApi, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { ParameterPanel } from './components/ParameterPanel'
@@ -49,10 +49,11 @@ export default function App() {
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [apiBase, setApiBaseState] = useState(getApiBase())
-  const [connecting, setConnecting] = useState(true)
+  const [connecting, setConnecting] = useState(usesSameOriginApi())
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    if (!usesSameOriginApi()) return
     let active = true
     getRuntime()
       .then((info) => {
