@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-drr"
+version = "0.1.0"
+description = "Digitally reconstructed radiograph rendering with CPU, CUDA, and Apple Metal backends"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=2.0",
+  "SimpleITK>=2.4",
+  "scipy>=1.13",
+  "tqdm>=4.66",
+  "imageio>=2.35",
+]
+
+[project.optional-dependencies]
+mps = [
+  "torch>=2.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
+]
+cuda = [
+  "cupy-cuda12x; platform_system != 'Darwin'",
+]
+studio = [
+  "fastapi>=0.141",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.12",
+]
+test = [
+  "pytest>=8",
+]
+
+[project.scripts]
+pydrr = "pydrr.cli:main"
+pydrr-studio = "pydrr_studio.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/farrell236/python-drr"
+Repository = "https://github.com/farrell236/python-drr"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pydrr_studio = ["static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

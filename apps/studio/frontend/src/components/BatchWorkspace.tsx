@@ -1,0 +1,123 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Box, Download, Orbit, Pause, Play, Square, Timer } from 'lucide-react'
+import type { BatchSettings, JobInfo, RenderSettings, VolumeInfo } from '../types'
+import { AcquisitionScene } from './AcquisitionScene'
+
+interface Props {
+  volume: VolumeInfo
+  renderSettings: RenderSettings
+  batchSettings: BatchSettings
+  job: JobInfo | null
+  onChange: (settings: BatchSettings) => void
+  onRun: () => void
+  onCancel: () => void
+}
+
+function BatchNumber({ label, value, unit, step = 1, min, max, readOnly = false, onChange }: { label: string; value: number; unit: string; step?: number; min?: number; max?: number; readOnly?: boolean; onChange: (value: number) => void }) {
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={value} step={step} min={min} max={max} readOnly={readOnly} onChange={(event) => onChange(Number(event.target.value))} /><em>{unit}</em></div></label>
+}
+
+export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onChange, onRun, onCancel }: Props) {
+  const frameCount = Math.max(0, Math.floor((batchSettings.end_angle_deg - batchSettings.start_angle_deg) / batchSettings.step_deg) + 1)
+  const running = !!job && ['queued', 'running'].includes(job.status)
+  const update = (values: Partial<BatchSettings>) => onChange({ ...batchSettings, ...values })
+  const [previewAngle, setPreviewAngle] = useState(batchSettings.start_angle_deg)
+  const [previewPlaying, setPreviewPlaying] = useState(false)
+  const rangeEnd = Math.max(batchSettings.start_angle_deg, batchSettings.end_angle_deg)
+  const displayAngle = running ? (job?.current_angle_deg ?? batchSettings.start_angle_deg) : previewAngle
+  const snapshotAngles = useMemo(
+    () => Array.from({ length: frameCount }, (_, index) => batchSettings.start_angle_deg + index * batchSettings.step_deg),
+    [batchSettings.start_angle_deg, batchSettings.step_deg, frameCount],
+  )
+
+  useEffect(() => {
+    setPreviewAngle((angle) => angle < batchSettings.start_angle_deg || angle > rangeEnd ? batchSettings.start_angle_deg : angle)
+  }, [batchSettings.start_angle_deg, rangeEnd])
+
+  useEffect(() => {
+    if (running || !previewPlaying || rangeEnd <= batchSettings.start_angle_deg) return
+    const range = rangeEnd - batchSettings.start_angle_deg
+    const degreesPerTick = range / 120
+    const timer = window.setInterval(() => {
+      setPreviewAngle((angle) => {
+        const next = angle + degreesPerTick
+        return next > rangeEnd ? batchSettings.start_angle_deg : next
+      })
+    }, 80)
+    return () => window.clearInterval(timer)
+  }, [batchSettings.start_angle_deg, previewPlaying, rangeEnd, running])
+
+  return (
+    <main className="batch-workspace">
+      <aside className="batch-recipe">
+        <header><span><b>Acquisition recipe</b><small>Configure a reproducible sweep</small></span><Orbit /></header>
+        <div className="recipe-type active"><Orbit /><span><b>Angle sweep</b><small>One projection angle changes per frame</small></span></div>
+        <div className="field-grid">
+          <BatchNumber label="Start" value={batchSettings.start_angle_deg} unit="°" onChange={(value) => update({ start_angle_deg: value })} />
+          <BatchNumber label="End" value={batchSettings.end_angle_deg} unit="°" onChange={(value) => update({ end_angle_deg: value })} />
+          <BatchNumber label="Step" value={batchSettings.step_deg} step={0.5} unit="°" onChange={(value) => update({ step_deg: Math.max(0.1, value) })} />
+          <BatchNumber label="Views" value={frameCount} unit="" readOnly onChange={() => undefined} />
+        </div>
+        <div className="batch-fixed">
+          <span>Fixed geometry</span>
+          <dl><div><dt>SID</dt><dd>{renderSettings.sid_mm} mm</dd></div><div><dt>Detector</dt><dd>{renderSettings.detector_width_px} × {renderSettings.detector_height_px}</dd></div><div><dt>Spacing</dt><dd>{renderSettings.detector_col_spacing_mm} mm</dd></div><div><dt>Backend</dt><dd>{renderSettings.backend.toUpperCase()}</dd></div></dl>
+        </div>
+        <div className="toggle-list">
+          <label><span><b>Shared normalization</b><small>Keep brightness comparable across views</small></span><input type="checkbox" checked={batchSettings.shared_normalization} onChange={(event) => update({ shared_normalization: event.target.checked })} /></label>
+          <label><span><b>Include raw arrays</b><small>Save a Float32 NPY for every projection</small></span><input type="checkbox" checked={batchSettings.include_raw} onChange={(event) => update({ include_raw: event.target.checked })} /></label>
+        </div>
+        <div className="batch-estimate"><Timer /><span><small>Projection count</small><b>{frameCount} views</b></span></div>
+      </aside>
+
+      <section className="trajectory-panel">
+        <header className="workspace-heading"><div><span className="eyebrow">Trajectory preview</span><h2>{frameCount} projections along the configured orbit</h2></div><span className="angle-readout">{displayAngle.toFixed(1)}°</span></header>
+        <div className="trajectory-scene">
+          <AcquisitionScene
+            volume={volume}
+            settings={{ ...renderSettings, projection_angle_deg: displayAngle }}
+            compact
+            showOrbit
+            orbitSampleAngles={snapshotAngles}
+          />
+          <div className="trajectory-legend" aria-hidden="true"><span><i className="patient-key" />Patient reference</span><span><i className="gantry-key" />Active fixture</span><span><i className="snapshot-key" />Acquisition views</span></div>
+        </div>
+        <div className="trajectory-controls">
+          <button type="button" className="icon-button" disabled={running || rangeEnd <= batchSettings.start_angle_deg} aria-label={previewPlaying ? 'Pause trajectory preview' : 'Play trajectory preview'} title={previewPlaying ? 'Pause preview' : 'Play preview'} onClick={() => setPreviewPlaying((playing) => !playing)}>
+            {previewPlaying ? <Pause /> : <Play />}
+          </button>
+          <input
+            aria-label="Preview angle"
+            type="range"
+            min={batchSettings.start_angle_deg}
+            max={rangeEnd}
+            step={Math.max(0.1, batchSettings.step_deg / 5)}
+            value={Math.min(rangeEnd, Math.max(batchSettings.start_angle_deg, displayAngle))}
+            disabled={running || rangeEnd <= batchSettings.start_angle_deg}
+            onChange={(event) => { setPreviewPlaying(false); setPreviewAngle(Number(event.target.value)) }}
+          />
+          <span>{running ? 'Following acquisition' : previewPlaying ? 'Previewing gantry motion' : 'Preview paused'}</span>
+        </div>
+        {job && (
+          <div className={`job-progress ${job.status}`}>
+            <div className="progress-copy"><span><b>{job.message}</b><small>{Math.round(job.progress * 100)}% complete</small></span><span>{job.status}</span></div>
+            <div className="progress-track"><i style={{ width: `${job.progress * 100}%` }} /></div>
+            {job.error && <div className="error-message" role="alert">{job.error}</div>}
+          </div>
+        )}
+      </section>
+
+      <aside className="batch-summary">
+        <div><span className="eyebrow">Ready to acquire</span><h2>Angle sweep</h2><p>The export includes display PNGs, optional raw projections, and one JSON manifest with the geometry of every frame.</p></div>
+        <dl><div><dt>Volume</dt><dd>{volume.filename}</dd></div><div><dt>Range</dt><dd>{batchSettings.start_angle_deg}° → {batchSettings.end_angle_deg}°</dd></div><div><dt>Step</dt><dd>{batchSettings.step_deg}°</dd></div><div><dt>Orbit plane</dt><dd>X {renderSettings.orbit_tilt_x_deg.toFixed(1)}° · Y {renderSettings.orbit_tilt_y_deg.toFixed(1)}°</dd></div><div><dt>Detector roll</dt><dd>{renderSettings.detector_roll_deg.toFixed(1)}°</dd></div><div><dt>Resolution</dt><dd>{renderSettings.detector_width_px} × {renderSettings.detector_height_px}</dd></div><div><dt>Frames</dt><dd>{frameCount}</dd></div></dl>
+        <div className="batch-summary-spacer" />
+        {job?.download_url && <a className="button secondary full" href={job.download_url}><Download /> Download sweep</a>}
+        {running ? (
+          <button type="button" className="button danger full" onClick={onCancel}><Square /> Cancel after current frame</button>
+        ) : (
+          <button type="button" className="button primary full" disabled={frameCount < 1 || frameCount > 720} onClick={onRun}><Play /> Run {frameCount} projections</button>
+        )}
+        <span className="local-note"><Box /> Results stay on this machine until downloaded.</span>
+      </aside>
+    </main>
+  )
+}

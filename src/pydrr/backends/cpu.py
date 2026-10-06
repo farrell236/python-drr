@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from .volume import Volume
+from ..volume import Volume, world_xyz_to_image_physical_xyz
 
 
 def ray_box_intersection(
@@ -42,10 +42,11 @@ def ray_integral_siddon_jacobs(
     clamp_negative_to_zero: bool = True,
     eps: float = 1e-8,
 ) -> float:
-    """Siddon/Jacobs-style line integral through an axis-aligned voxel grid.
+    """Siddon/Jacobs-style line integral through a voxel grid.
 
     Notes:
-        - Assumes the volume is axis aligned.
+        - Rays are transformed from world coordinates into the image's
+          axis-aligned physical frame, so the SimpleITK direction is honored.
         - Uses voxel values directly as attenuation surrogates.
         - Air can be suppressed with `hu_air_threshold`.
     """
@@ -53,13 +54,11 @@ def ray_integral_siddon_jacobs(
     nz, ny, nx = data.shape
 
     spacing_zyx = np.asarray(vol.spacing_zyx, dtype=np.float64)
-    origin_zyx = np.asarray(vol.origin_zyx, dtype=np.float64)
-
     sz, sy, sx = float(spacing_zyx[0]), float(spacing_zyx[1]), float(spacing_zyx[2])
-    oz, oy, ox = float(origin_zyx[0]), float(origin_zyx[1]), float(origin_zyx[2])
+    ox = oy = oz = 0.0
 
-    start_xyz = np.asarray(start_xyz, dtype=np.float64)
-    end_xyz = np.asarray(end_xyz, dtype=np.float64)
+    start_xyz = world_xyz_to_image_physical_xyz(vol, start_xyz)
+    end_xyz = world_xyz_to_image_physical_xyz(vol, end_xyz)
 
     ray = end_xyz - start_xyz
     ray_length = np.linalg.norm(ray)

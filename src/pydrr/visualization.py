@@ -30,11 +30,17 @@ def normalize_image(
     return x
 
 
-def save_png(path: str, img: np.ndarray, invert: bool = True) -> None:
+def save_png(
+    path: str,
+    img: np.ndarray,
+    invert: bool = True,
+    p_lo: float = 1.0,
+    p_hi: float = 99.5,
+) -> None:
     """Save a DRR as an 8-bit PNG."""
     import imageio.v2 as imageio
 
-    x = normalize_image(img, invert=invert)
+    x = normalize_image(img, invert=invert, p_lo=p_lo, p_hi=p_hi)
     imageio.imwrite(path, (x * 255).astype(np.uint8))
 
 

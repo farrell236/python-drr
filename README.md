@@ -1,111 +1,128 @@
-# python-drr
+# PyDRR
 
-Python DRR renderer using a Siddon/Jacobs-style projector.
+PyDRR renders digitally reconstructed radiographs from CT and CBCT volumes
+using a Siddon/Jacobs-style projector.
 
 <p align="center">
-  <img src="assets/drr_orbit_00.png" width="18%" />
-  <img src="assets/drr_orbit_06.png" width="18%" />
-  <img src="assets/drr_single.png" width="18%" />
-  <img src="assets/orbit_z_rotation.gif" width="18%" />
+  <img src="docs/assets/drr_orbit_00.png" width="18%" />
+  <img src="docs/assets/drr_orbit_06.png" width="18%" />
+  <img src="docs/assets/drr_single.png" width="18%" />
+  <img src="docs/assets/orbit_z_rotation.gif" width="18%" />
 </p>
 
-## Requirements
+## Install
 
-Python packages:
-
-```text
-numpy
-SimpleITK
-tqdm
-scipy
-imageio
-````
-
-Optional for CUDA backend:
-
-```text
-cupy-cuda12x
-```
-
-Example install:
+From a cloned repository:
 
 ```bash
-pip install numpy SimpleITK tqdm scipy imageio
-pip install cupy-cuda12x
+python -m pip install .
 ```
 
-CUDA backend requires:
-
-* NVIDIA GPU
-* CUDA 12-compatible driver/runtime
-* NVRTC (`libnvrtc.so.12`) available on the system
-
-## Basic Usage
-
-Single lateral-like DRR:
+Optional backends and applications are installed as extras:
 
 ```bash
-(user@machine python-drr)$ python get_drr_siddon_jacobs.py --help
-usage: get_drr_siddon_jacobs.py [-h] [-v] [-res ROW_MM COL_MM] [-size H W] [-scd SCD] [-t TX TY TZ] [-rx RX] [-ry RY] [-rz RZ] [-2dcx COL ROW] [-iso IX IY IZ] [-rp RP] [-threshold THRESHOLD] -o OUTPUT [--invert] [--no-clamp-negative]
-                                [--p-lo P_LO] [--p-hi P_HI] [--n-cores N_CORES] [--mp-chunksize MP_CHUNKSIZE] [--backend {cpu,cuda}]
-                                input
+# Apple Silicon GPU
+python -m pip install ".[mps]"
 
-Calculate a Digitally Reconstructed Radiograph from a CT/CBCT image using a Siddon/Jacobs-style ray-tracing projector.
+# NVIDIA CUDA
+python -m pip install ".[cuda]"
 
-positional arguments:
-  input                 Input 3D image filename readable by SimpleITK
+# Local web application
+python -m pip install ".[studio]"
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -v, --verbose         Verbose output (default: False)
-  -res ROW_MM COL_MM    DRR pixel spacing in the isocenter plane in mm (default: (0.51, 0.51))
-  -size H W             DRR size in pixels (default: (512, 512))
-  -scd SCD              Source to isocenter distance in mm (default: 1000.0)
-  -t TX TY TZ           Volume translation in x, y, z in mm (default: (0.0, 0.0, 0.0))
-  -rx RX                Volume rotation about x axis in degrees (default: 0.0)
-  -ry RY                Volume rotation about y axis in degrees (default: 0.0)
-  -rz RZ                Volume rotation about z axis in degrees (default: 0.0)
-  -2dcx COL ROW         Central axis detector position in continuous pixel indices (col row) (default: None)
-  -iso IX IY IZ         CT isocenter in continuous voxel indices (x y z) (default: None)
-  -rp RP                Projection angle in degrees (default: 0.0)
-  -threshold THRESHOLD  Ignore CT values below this threshold (default: 0.0)
-  -o OUTPUT, --output OUTPUT
-                        Output image filename (default: None)
-  --invert              Invert grayscale when saving display-oriented formats like PNG (default: False)
-  --no-clamp-negative   Do not clamp negative intensities to zero above the threshold (default: False)
-  --p-lo P_LO           Lower percentile for PNG-style normalization (default: 1.0)
-  --p-hi P_HI           Upper percentile for PNG-style normalization (default: 99.5)
-  --n-cores N_CORES     Number of CPU cores/processes for parallel rendering. Omit for serial rendering. (default: None)
-  --mp-chunksize MP_CHUNKSIZE
-                        Row chunksize for multiprocessing work scheduling in drr.renderer. (default: 1)
-  --backend {cpu,cuda}  Rendering backend. 'cpu' uses the Python projector, 'cuda' uses CuPy RawKernel. (default: cpu)
+# Editable development installation
+python -m pip install -e ".[studio,mps,test]"
 ```
 
-Example CPU render:
+## Command line
+
+Installation provides the `pydrr` command:
 
 ```bash
-python get_drr_siddon_jacobs.py input.nii.gz -rz 30 --invert --n-cores 8 -o drr_cpu.png --backend cpu
+pydrr input.nii.gz \
+  --projection-angle 45 \
+  --orbit-tilt-x 20 \
+  --orbit-tilt-y -10 \
+  --detector-roll 5 \
+  --backend auto \
+  --invert \
+  --output projection.png
 ```
 
-Example CUDA render:
+The explicit module form uses a chosen interpreter:
 
 ```bash
-python get_drr_siddon_jacobs.py input.nii.gz -rz 30 --invert -o drr_cuda.png --backend cuda
+python -m pydrr --help
 ```
 
-## Notes
+Available backends are `auto`, `cpu`, `cuda`, and `mps`. Automatic selection
+prefers CUDA, then Apple Metal, then CPU. CPU multiprocessing uses
+`--n-cores`.
 
-* assumes the volume is axis-aligned
-* SimpleITK direction matrix is currently ignored
-* `-res` is interpreted as spacing at the **isocenter plane**
-* supports multiprocessing with `--n-cores` for CPU backend
-* rotations/translations are applied to the **volume**
-* `--invert` only changes saved display appearance for formats like PNG
-* rendering cost scales with detector size (`-size`) and smaller spacing (`-res`)
-* `-threshold` and negative clamping affect background / air contribution
-* `--backend cuda` uses CuPy `RawKernel`
-* CPU multiprocessing is disabled if CUDA backend is used
+## Python API
+
+```python
+from pydrr import generate_drr, load_volume_sitk, make_orbit_pose
+
+volume = load_volume_sitk("input.nii.gz")
+geometry = make_orbit_pose(
+    iso_center_mm=[0.0, 0.0, 0.0],
+    projection_angle_deg=45.0,
+)
+projection = generate_drr(volume, geometry, backend="auto")
+```
+
+See `examples/single_projection.py` for a complete example.
+
+## Geometry convention
+
+PyDRR uses a patient-fixed orbit frame. Projection angle selects the source
+position within that frame, X/Y tilts orient the orbit plane in physical world
+coordinates, and detector roll rotates the panel around the central ray.
+SimpleITK direction matrices are applied during world/voxel conversion and ray
+tracing.
+
+The former `-rp` argument remains an alias for `--projection-angle`. Legacy
+`-rx`, `-ry`, and `-rz` arguments retain their earlier acquisition-rotation
+behavior and emit a deprecation warning.
+
+## Studio
+
+PyDRR Studio separates its public interface from its local compute service.
+Install and start PyDRR on the machine that will perform the rendering:
+
+```bash
+python -m pip install ".[studio,mps]"
+pydrr-studio --port 8765
+```
+
+Then open the hosted Studio at `https://farrell236.github.io/python-drr/` and connect
+it to `http://127.0.0.1:8765`. The service also serves the same interface at
+that local address as an offline fallback. NIfTI volumes and generated results
+travel directly between the browser and the loopback service; GitHub Pages
+does not receive them. A browser may ask for permission to access the local
+network the first time it connects.
+
+The installable distribution is named `python-drr`; the Python import and CLI
+remain `pydrr`. See `apps/studio/README.md` for deployment and development
+instructions.
+
+The Performance panel can probe another Python executable, install the core
+rendering packages and the selected accelerator package with that
+interpreter's `pip`, and use it for subsequent projection and batch workers.
+The local FastAPI service remains in its original environment while compute
+jobs run in the selected environment.
+
+## Repository layout
+
+- `src/pydrr`: reusable rendering package and CLI
+- `src/pydrr_studio`: optional local API and job service
+- `apps/studio/frontend`: React/vtk.js frontend
+- `tests`: core and Studio tests
+- `examples`: small library examples
+- `benchmarks`: backend benchmark tooling and historical results
+- `docs`: architecture and documentation assets
 
 ## Acknowledgement
 
-ChatGPT (GPT-5.4 Thinking, web interface) and Codex were used to assist with coding, debugging, and documentation for this project.
+ChatGPT and Codex were used to assist with coding, debugging, and documentation.

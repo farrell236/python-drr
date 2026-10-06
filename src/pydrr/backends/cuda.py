@@ -4,8 +4,8 @@ from typing import Optional
 
 import numpy as np
 
-from .geometry import DRRGeometry, detector_pixel_centers_world
-from .volume import Volume
+from ..geometry import DRRGeometry, detector_pixel_centers_world
+from ..volume import Volume, world_xyz_to_image_physical_xyz
 
 
 def _require_cupy():
@@ -258,7 +258,10 @@ def render_drr_cuda(
     kernel = cp.RawKernel(_CUDA_SRC, "siddon_drr_kernel")
 
     gpu_vol = upload_volume_to_gpu(vol)
-    det_pts = detector_pixel_centers_world(geom).astype(np.float32)
+    det_pts = world_xyz_to_image_physical_xyz(
+        vol,
+        detector_pixel_centers_world(geom),
+    ).astype(np.float32)
     H, W, _ = det_pts.shape
     N = H * W
 
@@ -266,9 +269,10 @@ def render_drr_cuda(
     out_gpu = cp.zeros((N,), dtype=cp.float32)
 
     sz, sy, sx = [float(x) for x in vol.spacing_zyx]
-    oz, oy, ox = [float(x) for x in vol.origin_zyx]
+    ox = oy = oz = 0.0
     nz, ny, nx = [int(x) for x in vol.data.shape]
-    source_x, source_y, source_z = [float(x) for x in geom.source_mm]
+    source_local = world_xyz_to_image_physical_xyz(vol, geom.source_mm)
+    source_x, source_y, source_z = [float(x) for x in source_local]
 
     threads = 256
     blocks = (N + threads - 1) // threads

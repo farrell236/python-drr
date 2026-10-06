@@ -6,8 +6,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 from tqdm import tqdm
 
-from .geometry import DRRGeometry, detector_pixel_centers_world, make_circular_orbit_pose
-from .projector import ray_integral_siddon_jacobs
+from .geometry import DRRGeometry, detector_pixel_centers_world, make_orbit_pose
+from .backends import ray_integral_siddon_jacobs, resolve_backend
 from .volume import Volume, volume_center_world_xyz
 
 ProjectorFn = Callable[..., float]
@@ -58,9 +58,7 @@ def generate_drr(
     if projector_kwargs is None:
         projector_kwargs = {}
 
-    backend = str(backend).lower()
-    if backend not in {"cpu", "cuda"}:
-        raise ValueError("backend must be 'cpu' or 'cuda'")
+    backend = resolve_backend(backend)
 
     if backend == "cuda":
         if n_cores not in (None, 1):
@@ -68,8 +66,22 @@ def generate_drr(
         if mp_chunksize != 1:
             raise ValueError("mp_chunksize is not used when backend='cuda'")
 
-        from .projector_cuda import render_drr_cuda
+        from .backends.cuda import render_drr_cuda
         return render_drr_cuda(
+            vol=vol,
+            geom=geom,
+            hu_air_threshold=projector_kwargs.get("hu_air_threshold", -900.0),
+            clamp_negative_to_zero=projector_kwargs.get("clamp_negative_to_zero", True),
+        )
+
+    if backend == "mps":
+        if n_cores not in (None, 1):
+            raise ValueError("n_cores is not used when backend='mps'")
+        if mp_chunksize != 1:
+            raise ValueError("mp_chunksize is not used when backend='mps'")
+
+        from .backends.mps import render_drr_mps
+        return render_drr_mps(
             vol=vol,
             geom=geom,
             hu_air_threshold=projector_kwargs.get("hu_air_threshold", -900.0),
@@ -127,6 +139,9 @@ def generate_orbit_drrs(
     mp_chunksize: int = 1,
     show_progress: bool = True,
     backend: str = "cpu",
+    orbit_tilt_x_deg: float = 0.0,
+    orbit_tilt_y_deg: float = 0.0,
+    detector_roll_deg: float = 0.0,
 ) -> List[np.ndarray]:
     if projector_kwargs is None:
         projector_kwargs = {}
@@ -136,11 +151,14 @@ def generate_orbit_drrs(
     angle_iter = tqdm(angles_deg, desc="Orbit DRRs") if show_progress else angles_deg
 
     for ang in angle_iter:
-        geom = make_circular_orbit_pose(
+        geom = make_orbit_pose(
             iso_center_mm=iso_center,
-            angle_deg=ang,
+            projection_angle_deg=ang,
             sid_mm=sid_mm,
             idd_mm=idd_mm,
+            orbit_tilt_x_deg=orbit_tilt_x_deg,
+            orbit_tilt_y_deg=orbit_tilt_y_deg,
+            detector_roll_deg=detector_roll_deg,
             detector_size_px=detector_size_px,
             detector_spacing_mm=detector_spacing_mm,
         )

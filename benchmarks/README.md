@@ -1,12 +1,25 @@
-# Benchmark
+# Backend benchmarks
 
 ## Run command
 
 ```bash
-python -m examples.benchmark_drr input.nii.gz --angle 30 --cpu-cores 8 --cuda-warmup
+python benchmarks/benchmark_backends.py input.nii.gz \
+  --backends cpu cpu-mp cuda mps \
+  --cpu-workers 8 \
+  --repeats 3 \
+  --json benchmark-results.json
 ```
 
-## Machine / environment
+Unavailable backends are reported and skipped. GPU backends are warmed up and
+synchronized before timing. The output JSON records the interpreter, platform,
+geometry, individual durations, and summary statistics.
+
+## Historical CUDA result
+
+The result below predates the MPS backend and is retained as a historical
+reference rather than a current cross-platform comparison.
+
+### Machine / environment
 
 ```text
 - Python 3.9.15
@@ -18,7 +31,7 @@ python -m examples.benchmark_drr input.nii.gz --angle 30 --cpu-cores 8 --cuda-wa
 ```
 
 
-## Benchmark output
+### Benchmark output
 
 ```text
 Loaded volume
@@ -84,4 +97,3 @@ Speedup vs cpu_serial
   cpu_mp         7.75x
   cuda           2140.80x
 ```
-
