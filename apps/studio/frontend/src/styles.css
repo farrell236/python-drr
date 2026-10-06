@@ -176,6 +176,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .number-field { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 10px; }
 .number-field > div { height: 32px; display: flex; align-items: center; gap: 3px; padding: 0 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-alt); }
+.number-field.invalid > div { border-color: color-mix(in srgb, var(--red) 68%, var(--line)); background: color-mix(in srgb, var(--red) 6%, var(--panel-alt)); }
 .number-field input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--text); background: transparent; font-variant-numeric: tabular-nums; }
 .number-field em { color: var(--muted); font-size: 9px; font-style: normal; }
 .toggle-list { display: grid; gap: 5px; margin-bottom: 10px; }

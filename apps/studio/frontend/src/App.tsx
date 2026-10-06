@@ -165,11 +165,11 @@ export default function App() {
               <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
             </section>
           </div>
-          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onReset={() => setSettings({ ...DEFAULT_SETTINGS, volume_id: volume.id })} volumeFilename={volume.filename} />
+          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onValidationError={setError} onReset={() => setSettings({ ...DEFAULT_SETTINGS, volume_id: volume.id })} volumeFilename={volume.filename} />
         </main>
       )}
 
-      {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
+      {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
       {workspace === 'results' && <ResultsWorkspace jobs={jobs} />}
     </div>
   )

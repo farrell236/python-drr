@@ -1,12 +1,15 @@
 import { ChevronDown, RotateCcw, Share2, Zap } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { acquisitionExportUrl } from '../api'
 import type { BackendName, RenderSettings, RuntimeInfo } from '../types'
+import { blankFieldWarning, NumericInput } from './NumericInput'
 
 interface Props {
   settings: RenderSettings
   busy: boolean
   onChange: (settings: RenderSettings) => void
   onRender: () => void
+  onValidationError: (message: string) => void
   onReset: () => void
   volumeFilename: string
   runtime: RuntimeInfo | null
@@ -37,20 +40,23 @@ function Slider({ label, field, value, min, max, step = 1, unit, onChange }: Sli
   )
 }
 
-function NumberInput({ label, value, unit, min, max, step = 1, onChange }: { label: string; value: number; unit: string; min?: number; max?: number; step?: number; onChange: (value: number) => void }) {
-  return (
-    <label className="number-field">
-      <span>{label}</span>
-      <div><input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} /><em>{unit}</em></div>
-    </label>
-  )
-}
-
 function filenameStem(filename: string) {
   return filename.replace(/\.nii(?:\.gz)?$/i, '').replace(/[^a-z0-9._-]+/gi, '_') || 'volume'
 }
 
-export function ParameterPanel({ settings, busy, onChange, onRender, onReset, volumeFilename, runtime, runtimeError }: Props) {
+export function ParameterPanel({ settings, busy, onChange, onRender, onValidationError, onReset, volumeFilename, runtime, runtimeError }: Props) {
+  const [blankFields, setBlankFields] = useState<Record<string, string>>({})
+  const [resetKey, setResetKey] = useState(0)
+  const trackBlankField = useCallback((fieldId: string, label: string, blank: boolean) => {
+    setBlankFields((current) => {
+      if (blank && current[fieldId] === label) return current
+      if (!blank && !(fieldId in current)) return current
+      const next = { ...current }
+      if (blank) next[fieldId] = label
+      else delete next[fieldId]
+      return next
+    })
+  }, [])
   const numeric = (field: NumericKey, value: number) => onChange({ ...settings, [field]: value })
   const patch = (values: Partial<RenderSettings>) => onChange({ ...settings, ...values })
   const preset = (angle: number) => patch({ projection_angle_deg: angle, orbit_tilt_x_deg: 0, orbit_tilt_y_deg: 0, detector_roll_deg: 0 })
@@ -64,6 +70,19 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
   const acceleratorPackages = runtime?.packages.filter((item) => ['torch', 'cupy'].includes(item.distribution) && item.installed) || []
   const selectedBackendReady = settings.backend === 'auto' || selectedBackend?.available === true
   const renderReady = runtime?.ready === true && selectedBackendReady
+  const render = () => {
+    const labels = Object.values(blankFields)
+    if (labels.length) {
+      onValidationError(blankFieldWarning(labels, 'rendering'))
+      return
+    }
+    onRender()
+  }
+  const reset = () => {
+    setBlankFields({})
+    setResetKey((current) => current + 1)
+    onReset()
+  }
 
   return (
     <aside className="parameter-panel">
@@ -71,7 +90,7 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
         <span><b>Acquisition</b><small>Exact values are stored with every result</small></span>
         <div className="parameter-actions">
           <a className="icon-button" title="Download runnable shell script" aria-label="Download current acquisition as shell script" href={exportHref} download={exportFilename}><Share2 /></a>
-          <button type="button" className="icon-button" title="Reset parameters" aria-label="Reset acquisition parameters" onClick={onReset}><RotateCcw /></button>
+          <button type="button" className="icon-button" title="Reset parameters" aria-label="Reset acquisition parameters" onClick={reset}><RotateCcw /></button>
         </div>
       </header>
       <div className="preset-row">
@@ -88,10 +107,10 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
         <Slider label="Source–isocenter" field="sid_mm" value={settings.sid_mm} min={300} max={2000} step={10} unit="mm" onChange={numeric} />
         <Slider label="Isocenter–detector" field="idd_mm" value={settings.idd_mm} min={0} max={1500} step={10} unit="mm" onChange={numeric} />
         <div className="field-grid">
-          <NumberInput label="Detector width" value={settings.detector_width_px} min={16} max={2048} unit="px" onChange={(value) => numeric('detector_width_px', value)} />
-          <NumberInput label="Detector height" value={settings.detector_height_px} min={16} max={2048} unit="px" onChange={(value) => numeric('detector_height_px', value)} />
-          <NumberInput label="Column spacing" value={settings.detector_col_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" onChange={(value) => numeric('detector_col_spacing_mm', value)} />
-          <NumberInput label="Row spacing" value={settings.detector_row_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" onChange={(value) => numeric('detector_row_spacing_mm', value)} />
+          <NumericInput fieldId="detector_width_px" label="Detector width" value={settings.detector_width_px} min={16} max={2048} unit="px" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_width_px', value)} />
+          <NumericInput fieldId="detector_height_px" label="Detector height" value={settings.detector_height_px} min={16} max={2048} unit="px" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_height_px', value)} />
+          <NumericInput fieldId="detector_col_spacing_mm" label="Column spacing" value={settings.detector_col_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_col_spacing_mm', value)} />
+          <NumericInput fieldId="detector_row_spacing_mm" label="Row spacing" value={settings.detector_row_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_row_spacing_mm', value)} />
         </div>
       </details>
 
@@ -99,30 +118,30 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
         <summary>Detector alignment <ChevronDown /></summary>
         <Slider label="Detector roll" field="detector_roll_deg" value={settings.detector_roll_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} />
         <div className="field-grid">
-          <NumberInput label="Offset U" value={settings.detector_offset_u_mm} step={0.5} unit="mm" onChange={(value) => numeric('detector_offset_u_mm', value)} />
-          <NumberInput label="Offset V" value={settings.detector_offset_v_mm} step={0.5} unit="mm" onChange={(value) => numeric('detector_offset_v_mm', value)} />
+          <NumericInput fieldId="detector_offset_u_mm" label="Offset U" value={settings.detector_offset_u_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_offset_u_mm', value)} />
+          <NumericInput fieldId="detector_offset_v_mm" label="Offset V" value={settings.detector_offset_v_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_offset_v_mm', value)} />
         </div>
       </details>
 
       <details>
         <summary>Isocenter translation <ChevronDown /></summary>
         <div className="field-grid three">
-          <NumberInput label="X" value={settings.translate_x_mm} step={0.5} unit="mm" onChange={(value) => numeric('translate_x_mm', value)} />
-          <NumberInput label="Y" value={settings.translate_y_mm} step={0.5} unit="mm" onChange={(value) => numeric('translate_y_mm', value)} />
-          <NumberInput label="Z" value={settings.translate_z_mm} step={0.5} unit="mm" onChange={(value) => numeric('translate_z_mm', value)} />
+          <NumericInput fieldId="translate_x_mm" label="X" value={settings.translate_x_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('translate_x_mm', value)} />
+          <NumericInput fieldId="translate_y_mm" label="Y" value={settings.translate_y_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('translate_y_mm', value)} />
+          <NumericInput fieldId="translate_z_mm" label="Z" value={settings.translate_z_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('translate_z_mm', value)} />
         </div>
       </details>
 
       <details>
         <summary>Projection model <ChevronDown /></summary>
-        <NumberInput label="Air threshold" value={settings.hu_air_threshold ?? -900} step={10} unit="HU" onChange={(value) => patch({ hu_air_threshold: value })} />
+        <NumericInput fieldId="hu_air_threshold" label="Air threshold" value={settings.hu_air_threshold ?? -900} step={10} unit="HU" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => patch({ hu_air_threshold: value })} />
         <div className="toggle-list">
           <label><span><b>Clamp negative values</b><small>Treat remaining negative values as zero</small></span><input type="checkbox" checked={settings.clamp_negative_to_zero} onChange={(event) => patch({ clamp_negative_to_zero: event.target.checked })} /></label>
           <label><span><b>Invert display</b><small>Dark anatomy on a light background</small></span><input type="checkbox" checked={settings.invert} onChange={(event) => patch({ invert: event.target.checked })} /></label>
         </div>
         <div className="field-grid">
-          <NumberInput label="Low percentile" value={settings.p_lo} min={0} max={100} step={0.1} unit="%" onChange={(value) => numeric('p_lo', value)} />
-          <NumberInput label="High percentile" value={settings.p_hi} min={0} max={100} step={0.1} unit="%" onChange={(value) => numeric('p_hi', value)} />
+          <NumericInput fieldId="p_lo" label="Low percentile" value={settings.p_lo} min={0} max={100} step={0.1} unit="%" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('p_lo', value)} />
+          <NumericInput fieldId="p_hi" label="High percentile" value={settings.p_hi} min={0} max={100} step={0.1} unit="%" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('p_hi', value)} />
         </div>
       </details>
 
@@ -143,7 +162,7 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
             </>}
           </select>
         </label>
-        {(settings.backend === 'cpu' || (settings.backend === 'auto' && runtime?.resolved_backend === 'cpu')) && <NumberInput label="CPU workers" value={settings.cpu_workers} min={1} max={64} unit="" onChange={(value) => numeric('cpu_workers', value)} />}
+        {(settings.backend === 'cpu' || (settings.backend === 'auto' && runtime?.resolved_backend === 'cpu')) && <NumericInput fieldId="cpu_workers" label="CPU workers" value={settings.cpu_workers} min={1} max={64} unit="" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('cpu_workers', value)} />}
         <div className={`runtime-card ${runtime?.ready === false || runtimeError ? 'warning' : ''}`}>
           <div className="runtime-heading">
             <span><b>{runtime?.status || (runtimeError ? 'Runtime check failed' : 'Checking Python runtime…')}</b>{runtime && <small>Python {runtime.python_version} · {runtime.architecture}</small>}</span>
@@ -165,7 +184,7 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onReset, vo
 
       <div className="parameter-footer">
         <span className={renderReady ? '' : 'not-ready'}><i />{busy ? 'Rendering…' : renderReady ? `${resolvedLabel} ready` : 'Python or device packages required'}</span>
-        <button type="button" className="button primary full" disabled={busy || !renderReady} onClick={onRender}><Zap /> Render projection</button>
+        <button type="button" className="button primary full" disabled={busy || !renderReady} onClick={render}><Zap /> Render projection</button>
       </div>
     </aside>
   )

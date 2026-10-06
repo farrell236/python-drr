@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Box, Download, Orbit, Pause, Play, Square, Timer } from 'lucide-react'
 import type { BatchSettings, JobInfo, RenderSettings, VolumeInfo } from '../types'
 import { AcquisitionScene } from './AcquisitionScene'
+import { blankFieldWarning, NumericInput } from './NumericInput'
 
 interface Props {
   volume: VolumeInfo
@@ -10,14 +11,22 @@ interface Props {
   job: JobInfo | null
   onChange: (settings: BatchSettings) => void
   onRun: () => void
+  onValidationError: (message: string) => void
   onCancel: () => void
 }
 
-function BatchNumber({ label, value, unit, step = 1, min, max, readOnly = false, onChange }: { label: string; value: number; unit: string; step?: number; min?: number; max?: number; readOnly?: boolean; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={value} step={step} min={min} max={max} readOnly={readOnly} onChange={(event) => onChange(Number(event.target.value))} /><em>{unit}</em></div></label>
-}
-
-export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onChange, onRun, onCancel }: Props) {
+export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onChange, onRun, onValidationError, onCancel }: Props) {
+  const [blankFields, setBlankFields] = useState<Record<string, string>>({})
+  const trackBlankField = useCallback((fieldId: string, label: string, blank: boolean) => {
+    setBlankFields((current) => {
+      if (blank && current[fieldId] === label) return current
+      if (!blank && !(fieldId in current)) return current
+      const next = { ...current }
+      if (blank) next[fieldId] = label
+      else delete next[fieldId]
+      return next
+    })
+  }, [])
   const frameCount = Math.max(0, Math.floor((batchSettings.end_angle_deg - batchSettings.start_angle_deg) / batchSettings.step_deg) + 1)
   const running = !!job && ['queued', 'running'].includes(job.status)
   const update = (values: Partial<BatchSettings>) => onChange({ ...batchSettings, ...values })
@@ -29,6 +38,14 @@ export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onC
     () => Array.from({ length: frameCount }, (_, index) => batchSettings.start_angle_deg + index * batchSettings.step_deg),
     [batchSettings.start_angle_deg, batchSettings.step_deg, frameCount],
   )
+  const run = () => {
+    const labels = Object.values(blankFields)
+    if (labels.length) {
+      onValidationError(blankFieldWarning(labels, 'running the batch'))
+      return
+    }
+    onRun()
+  }
 
   useEffect(() => {
     setPreviewAngle((angle) => angle < batchSettings.start_angle_deg || angle > rangeEnd ? batchSettings.start_angle_deg : angle)
@@ -53,10 +70,10 @@ export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onC
         <header><span><b>Acquisition recipe</b><small>Configure a reproducible sweep</small></span><Orbit /></header>
         <div className="recipe-type active"><Orbit /><span><b>Angle sweep</b><small>One projection angle changes per frame</small></span></div>
         <div className="field-grid">
-          <BatchNumber label="Start" value={batchSettings.start_angle_deg} unit="°" onChange={(value) => update({ start_angle_deg: value })} />
-          <BatchNumber label="End" value={batchSettings.end_angle_deg} unit="°" onChange={(value) => update({ end_angle_deg: value })} />
-          <BatchNumber label="Step" value={batchSettings.step_deg} step={0.5} unit="°" onChange={(value) => update({ step_deg: Math.max(0.1, value) })} />
-          <BatchNumber label="Views" value={frameCount} unit="" readOnly onChange={() => undefined} />
+          <NumericInput fieldId="start_angle_deg" label="Start" value={batchSettings.start_angle_deg} unit="°" onBlankChange={trackBlankField} onChange={(value) => update({ start_angle_deg: value })} />
+          <NumericInput fieldId="end_angle_deg" label="End" value={batchSettings.end_angle_deg} unit="°" onBlankChange={trackBlankField} onChange={(value) => update({ end_angle_deg: value })} />
+          <NumericInput fieldId="step_deg" label="Step" value={batchSettings.step_deg} min={0.1} step={0.5} unit="°" onBlankChange={trackBlankField} onChange={(value) => update({ step_deg: Math.max(0.1, value) })} />
+          <NumericInput fieldId="view_count" label="Views" value={frameCount} unit="" readOnly onChange={() => undefined} />
         </div>
         <div className="batch-fixed">
           <span>Fixed geometry</span>
@@ -114,7 +131,7 @@ export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onC
         {running ? (
           <button type="button" className="button danger full" onClick={onCancel}><Square /> Cancel after current frame</button>
         ) : (
-          <button type="button" className="button primary full" disabled={frameCount < 1 || frameCount > 720} onClick={onRun}><Play /> Run {frameCount} projections</button>
+          <button type="button" className="button primary full" disabled={frameCount < 1 || frameCount > 720} onClick={run}><Play /> Run {frameCount} projections</button>
         )}
         <span className="local-note"><Box /> Results stay on this machine until downloaded.</span>
       </aside>
