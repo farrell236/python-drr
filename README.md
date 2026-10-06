@@ -112,7 +112,7 @@ opening a browser. NIfTI volumes and generated results stay on the local
 machine.
 
 The installable distribution is named `python-drr`; the Python import and CLI
-remain `pydrr`. See the [Studio README](apps/studio/README.md) for deployment
+remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation
 and development instructions.
 
 The Performance panel reports the active Python executable and detected compute
