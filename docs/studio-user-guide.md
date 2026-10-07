@@ -175,6 +175,11 @@ representation carried into the Acquire and Batch geometry scenes.
 | **Soft tissue** | Uses a soft-tissue transfer-function preset |
 | **Skin** | Emphasizes the outer volume surface |
 
+![One-row comparison of the Slices, Bone, Soft tissue, and Skin rendering modes](assets/studio-volume-render-modes.jpg)
+
+*Figure 2. The four 3D modes rendered from the same CT volume, isocenter, and
+default camera. Only the rendering mode changes between panels.*
+
 Bone, Soft tissue, and Skin each remember their own **Intensity shift** and
 **Opacity** values. Intensity shift moves that preset's transfer function along
 the HU scale; opacity changes its overall visibility. **Reset preset** restores
@@ -209,7 +214,7 @@ right pane displays the rendered DRR.
 
 ![PyDRR Studio Acquire workspace with a completed CT projection](assets/studio-acquire.jpg)
 
-*Figure 2. A completed 512 × 512 projection. The central scene shows the
+*Figure 3. A completed 512 × 512 projection. The central scene shows the
 patient-fixed geometry; the preview retains the settings that produced it.*
 
 ### Start from an anatomical preset
@@ -336,7 +341,7 @@ from Acquire.
 
 ![PyDRR Studio Batch workspace configured for a three-view sweep](assets/studio-batch.jpg)
 
-*Figure 3. A three-view 0° to 90° sweep. Diamond markers show the acquisition
+*Figure 4. A three-view 0° to 90° sweep. Diamond markers show the acquisition
 positions and point toward isocenter.*
 
 ### Define the sweep
@@ -389,7 +394,7 @@ summary.
 
 ![PyDRR Studio Results workspace and Download sweep menu](assets/studio-results.jpg)
 
-*Figure 4. Results from the example CT. Every completed batch exposes the same
+*Figure 5. Results from the example CT. Every completed batch exposes the same
 Download sweep menu in Batch and Results.*
 
 ### Inspect a completed sweep
@@ -422,7 +427,7 @@ normalization and may be resized or annotated.
 
 ![PyDRR Studio GIF export settings](assets/studio-media-export.jpg)
 
-*Figure 5. Presentation export settings for the completed three-frame CT
+*Figure 6. Presentation export settings for the completed three-frame CT
 sweep.*
 
 Both media dialogs provide:
@@ -467,7 +472,7 @@ Performance section in Acquire can still override them for one acquisition.
 
 ![PyDRR Studio Settings showing the active Python runtime and devices](assets/studio-settings.jpg)
 
-*Figure 6. Settings from the documented Apple Silicon session. Studio reports
+*Figure 7. Settings from the documented Apple Silicon session. Studio reports
 the exact interpreter and package versions used by render workers.*
 
 ### Appearance
@@ -586,4 +591,3 @@ override when it must run through a particular environment.
 | **World coordinates** | Physical X/Y/Z coordinates in millimetres after origin, spacing, and direction are applied |
 | **Voxel coordinates** | Continuous image X/Y/Z indices |
 | **DRR** | Digitally reconstructed radiograph produced by integrating volume values along source-to-detector rays |
-
