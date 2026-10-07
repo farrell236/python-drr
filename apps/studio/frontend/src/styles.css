@@ -327,14 +327,13 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .parameter-panel summary::-webkit-details-marker { display: none; }
 .parameter-panel summary svg { width: 14px; height: 14px; color: var(--muted); transition: transform .15s; }
 .parameter-panel details[open] summary svg { transform: rotate(180deg); }
-.slider-field { display: grid; gap: 6px; margin-bottom: 13px; }
-.slider-field > span { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: var(--sidebar-control-size); }
-.slider-field output { color: var(--text); font-variant-numeric: tabular-nums; }
-.slider-field input { width: 100%; accent-color: var(--blue); }
-.slider-input-row { display: grid; grid-template-columns: minmax(0, 1fr) 82px; align-items: end; gap: 8px; }
-.slider-input-row > input { align-self: center; }
-.slider-input-row .number-field { gap: 3px; font-size: var(--sidebar-support-size); }
-.slider-input-row .number-field > div { height: 28px; }
+.slider-field { margin-bottom: 8px; }
+.slider-input-row { min-height: 38px; display: grid; grid-template-columns: minmax(0, 1fr) 82px; align-items: stretch; gap: 8px; }
+.slider-track { min-width: 0; height: 38px; display: grid; grid-template-rows: 12px minmax(0, 1fr); align-items: center; gap: 1px; color: var(--muted); font-size: var(--sidebar-control-size); }
+.slider-track span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slider-track input { min-width: 0; width: 100%; accent-color: var(--blue); }
+.slider-input-row .number-field { align-self: stretch; gap: 0; font-size: var(--sidebar-support-size); }
+.slider-input-row .number-field > div { height: 38px; }
 .geometry-metrics { display: grid; gap: 1px; margin: 5px 0 9px; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--line); }
 .geometry-metrics div { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px; background: var(--panel-alt); font-size: 9px; }
 .geometry-metrics span { color: var(--muted); }

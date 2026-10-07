@@ -11,6 +11,7 @@ interface Props {
   min?: number
   max?: number
   readOnly?: boolean
+  hideLabel?: boolean
   resetKey?: number
   onChange: (value: number) => void
   onBlankChange?: BlankFieldHandler
@@ -24,7 +25,7 @@ export function blankFieldWarning(labels: string[], action: string): string {
   return `${joined} are blank. Enter values before ${action}.`
 }
 
-export function NumericInput({ fieldId, label, value, unit, step = 1, min, max, readOnly = false, resetKey = 0, onChange, onBlankChange }: Props) {
+export function NumericInput({ fieldId, label, value, unit, step = 1, min, max, readOnly = false, hideLabel = false, resetKey = 0, onChange, onBlankChange }: Props) {
   const [draft, setDraft] = useState(() => String(value))
   const blank = draft.trim() === ''
 
@@ -37,9 +38,10 @@ export function NumericInput({ fieldId, label, value, unit, step = 1, min, max, 
 
   return (
     <label className={`number-field ${!readOnly && blank ? 'invalid' : ''}`}>
-      <span>{label}</span>
+      {!hideLabel && <span>{label}</span>}
       <div>
         <input
+          aria-label={label}
           type="number"
           value={draft}
           min={min}

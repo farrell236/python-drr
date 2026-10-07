@@ -39,10 +39,12 @@ interface SliderProps {
 function Slider({ label, field, value, min, max, step = 1, unit, onChange, resetKey, onBlankChange }: SliderProps) {
   return (
     <div className="slider-field">
-      <span>{label}<output>{value.toFixed(step < 1 ? 2 : 0)} {unit}</output></span>
       <div className="slider-input-row">
-        <input aria-label={`${label} slider`} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(field, Number(event.target.value))} />
-        <NumericInput fieldId={`${String(field)}_exact`} label="Exact" value={value} min={min} max={max} step={step} unit={unit} resetKey={resetKey} onBlankChange={onBlankChange} onChange={(next) => onChange(field, next)} />
+        <label className="slider-track">
+          <span>{label}</span>
+          <input aria-label={`${label} slider`} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(field, Number(event.target.value))} />
+        </label>
+        <NumericInput fieldId={`${String(field)}_exact`} label={label} hideLabel value={value} min={min} max={max} step={step} unit={unit} resetKey={resetKey} onBlankChange={onBlankChange} onChange={(next) => onChange(field, next)} />
       </div>
     </div>
   )
