@@ -284,15 +284,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .image-toolbar > .zoom-readout { min-width: 32px; margin-left: 0; text-align: center; font-variant-numeric: tabular-nums; }
 .image-toolbar button:disabled { opacity: .35; cursor: not-allowed; }
 .tool-link { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 6px; color: var(--blue); text-decoration: none; background: var(--blue-soft); }
-.acquisition-tray { min-height: 94px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 7px; padding: 9px 11px; overflow: visible; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.acquisition-tray { min-height: 80px; display: grid; grid-template-rows: auto auto; align-content: center; gap: 5px; padding: 7px 10px; overflow: visible; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .tray-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; white-space: nowrap; }
 .tray-count { color: var(--muted); font-size: 9px; font-weight: 550; font-variant-numeric: tabular-nums; }
-.tray-content { min-width: 0; display: flex; align-items: center; gap: 8px; }
-.saved-view-deck { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 7px; overflow-x: auto; scrollbar-width: thin; }
-.saved-view-card { position: relative; min-width: 94px; height: 38px; flex: 0 0 94px; border: 1px solid color-mix(in srgb, var(--blue) 18%, var(--line)); border-radius: 8px; background: var(--panel); transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, opacity .14s ease; }
-.saved-view-card:hover, .saved-view-card:focus-within { transform: translateY(-1px); border-color: color-mix(in srgb, var(--blue) 38%, var(--line)); box-shadow: 0 5px 14px rgba(20, 36, 52, .12); }
-.saved-view-card.dragging { opacity: 0; transform: scale(.94); pointer-events: none; }
-.saved-view { width: 100%; height: 100%; min-width: 0; display: flex; align-items: center; padding: 4px 8px; border: 0; border-radius: 8px; color: var(--blue); background: transparent; text-align: left; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.tray-content { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.saved-view-deck { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 6px; margin: -3px; padding: 3px; overflow-x: auto; scrollbar-width: thin; }
+.saved-view-card { position: relative; min-width: 78px; height: 34px; flex: 0 0 78px; border: 1px solid color-mix(in srgb, var(--blue) 18%, var(--line)); border-radius: 7px; background: var(--panel); transition: border-color .14s ease, background .14s ease, box-shadow .14s ease, opacity .14s ease; }
+.saved-view-card:hover, .saved-view-card:focus-within { border-color: color-mix(in srgb, var(--blue) 35%, var(--line)); background: color-mix(in srgb, var(--blue) 3%, var(--panel)); }
+.saved-view-card.active { border-color: color-mix(in srgb, var(--blue) 72%, var(--line)); background: color-mix(in srgb, var(--blue) 6%, var(--panel)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 17%, transparent), 0 0 11px color-mix(in srgb, var(--blue) 13%, transparent); }
+.saved-view-card.dragging { opacity: 0; pointer-events: none; }
+.saved-view { width: 100%; height: 100%; min-width: 0; display: flex; align-items: center; padding: 3px 7px; border: 0; border-radius: 7px; color: var(--blue); background: transparent; text-align: left; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .saved-view > span { min-width: 0; display: grid; gap: 2px; }
 .saved-view b, .saved-view small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-view b { font-size: 10px; }
@@ -301,13 +302,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .saved-view-drag-ghost b, .saved-view-drag-ghost small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-view-drag-ghost b { font-size: 10px; }
 .saved-view-drag-ghost small { color: var(--muted); font-size: 8px; }
-.save-view { min-width: 104px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--blue) 38%, var(--line)); border-radius: 8px; color: var(--blue); background: color-mix(in srgb, var(--blue) 4%, var(--panel)); cursor: pointer; transition: color .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease; }
+.save-view { min-width: 96px; height: 36px; flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--blue) 38%, var(--line)); border-radius: 7px; color: var(--blue); background: color-mix(in srgb, var(--blue) 4%, var(--panel)); cursor: pointer; transition: color .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease; }
 .save-view:hover { border-style: solid; background: var(--blue-soft); }
 .save-view svg { width: 14px; height: 14px; }
 .save-view.delete-view-target { border-style: solid; border-color: color-mix(in srgb, var(--red) 52%, var(--line)); color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--panel)); cursor: grabbing; }
 .save-view.delete-view-target.over { border-color: var(--red); background: color-mix(in srgb, var(--red) 16%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 14%, transparent); transform: scale(1.02); }
 .saved-view-dragging, .saved-view-dragging * { cursor: grabbing !important; }
-.saved-view-dragging .saved-view-card:hover { transform: none; }
 .tray-batch { margin-left: auto; flex: none; white-space: nowrap; }
 .undo-toast { position: fixed; left: 50%; bottom: 22px; z-index: 110; display: flex; align-items: center; gap: 18px; transform: translateX(-50%); padding: 9px 10px 9px 14px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 11px; color: var(--text); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 12px 34px rgba(18, 31, 45, .22); backdrop-filter: blur(16px); font-size: 10px; }
 .undo-toast button { min-height: 27px; padding: 3px 8px; border: 0; border-radius: 7px; color: var(--blue); background: var(--blue-soft); font-weight: 650; cursor: pointer; }

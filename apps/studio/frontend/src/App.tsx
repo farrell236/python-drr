@@ -80,6 +80,7 @@ export default function App() {
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
   const [jobs, setJobs] = useState<JobInfo[]>([])
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
+  const [selectedSavedViewId, setSelectedSavedViewId] = useState<string | null>(null)
   const [deletedSavedView, setDeletedSavedView] = useState<{ view: SavedView; index: number } | null>(null)
   const [draggedSavedViewId, setDraggedSavedViewId] = useState<string | null>(null)
   const [dragOverDelete, setDragOverDelete] = useState(false)
@@ -163,6 +164,13 @@ export default function App() {
   const resultCount = jobs.filter((job) => job.status === 'completed').length
   const activeSettings = useMemo(() => ({ ...settings, volume_id: volume?.id || '' }), [settings, volume])
   const volumeRendering = useMemo(() => activeVolumeRenderSettings(volumeRenderState), [volumeRenderState])
+  const activeSavedViewId = useMemo(() => {
+    if (!selectedSavedViewId) return null
+    const selected = savedViews.find((view) => view.id === selectedSavedViewId)
+    if (!selected) return null
+    const matches = (Object.keys(activeSettings) as (keyof RenderSettings)[]).every((key) => activeSettings[key] === selected.settings[key])
+    return matches ? selectedSavedViewId : null
+  }, [activeSettings, savedViews, selectedSavedViewId])
 
   const handlePreferencesChange = (next: StudioPreferences) => {
     setPreferences(next)
@@ -202,6 +210,7 @@ export default function App() {
       setActiveBatch(null)
       setSavedViews([])
       savedViewsRef.current = []
+      setSelectedSavedViewId(null)
       setDeletedSavedView(null)
       setWindowLevel(defaultWindowLevel(info))
       setVolumeRenderState(defaultVolumeRenderState())
@@ -264,9 +273,11 @@ export default function App() {
     let viewNumber = 1
     while (usedNames.has(`View ${viewNumber}`)) viewNumber += 1
     const name = `View ${viewNumber}`
-    const next = [{ id: crypto.randomUUID(), name, settings: activeSettings }, ...savedViewsRef.current]
+    const id = crypto.randomUUID()
+    const next = [{ id, name, settings: activeSettings }, ...savedViewsRef.current]
     savedViewsRef.current = next
     setSavedViews(next)
+    setSelectedSavedViewId(id)
   }
 
   const deleteSavedView = (viewId: string) => {
@@ -277,6 +288,7 @@ export default function App() {
     const next = current.filter((view) => view.id !== viewId)
     savedViewsRef.current = next
     setSavedViews(next)
+    if (selectedSavedViewId === viewId) setSelectedSavedViewId(null)
   }
 
   const undoDeleteSavedView = () => {
@@ -501,7 +513,7 @@ export default function App() {
                 </button>
                 {savedViews.length > 0 && <div className="saved-view-deck" aria-label="Saved acquisition views" ref={savedViewDeckRef}>
                   {savedViews.map((view) => (
-                    <div className={`saved-view-card${draggedSavedViewId === view.id ? ' dragging' : ''}`} data-saved-view-id={view.id} key={view.id}>
+                    <div className={`saved-view-card${activeSavedViewId === view.id ? ' active' : ''}${draggedSavedViewId === view.id ? ' dragging' : ''}`} data-saved-view-id={view.id} key={view.id}>
                       <button
                         type="button"
                         className="saved-view"
@@ -520,6 +532,7 @@ export default function App() {
                             return
                           }
                           setSettings(view.settings)
+                          setSelectedSavedViewId(view.id)
                         }}
                       >
                         <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
