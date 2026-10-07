@@ -289,21 +289,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .tray-count { color: var(--muted); font-size: 9px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .tray-content { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .saved-view-deck { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 7px; overflow-x: auto; scrollbar-width: thin; }
-.saved-view-card { position: relative; min-width: 140px; height: 51px; flex: 0 0 140px; border: 1px solid color-mix(in srgb, var(--blue) 18%, var(--line)); border-radius: 8px; background: var(--panel); transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease; }
+.saved-view-card { position: relative; min-width: 112px; height: 44px; flex: 0 0 112px; border: 1px solid color-mix(in srgb, var(--blue) 18%, var(--line)); border-radius: 8px; background: var(--panel); transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, opacity .14s ease; }
 .saved-view-card:hover, .saved-view-card:focus-within { transform: translateY(-1px); border-color: color-mix(in srgb, var(--blue) 38%, var(--line)); box-shadow: 0 5px 14px rgba(20, 36, 52, .12); }
-.saved-view { width: 100%; height: 100%; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 5px 27px 5px 6px; border: 0; border-radius: 8px; color: var(--blue); background: transparent; text-align: left; cursor: pointer; }
-.saved-view > span:last-child { display: grid; gap: 2px; }
+.saved-view-card.dragging { z-index: 2; opacity: .58; transform: scale(.97); border-color: color-mix(in srgb, var(--blue) 52%, var(--line)); box-shadow: 0 7px 17px rgba(20, 36, 52, .16); }
+.saved-view { width: 100%; height: 100%; min-width: 0; display: flex; align-items: center; padding: 5px 27px 5px 9px; border: 0; border-radius: 8px; color: var(--blue); background: transparent; text-align: left; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.saved-view > span { min-width: 0; display: grid; gap: 2px; }
+.saved-view b, .saved-view small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-view small { color: var(--muted); font-size: 9px; }
 .saved-view-more { position: absolute; right: 3px; top: 3px; width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--muted); background: color-mix(in srgb, var(--panel) 88%, transparent); opacity: 0; cursor: pointer; transition: opacity .12s, color .12s, background .12s; }
 .saved-view-card:hover .saved-view-more, .saved-view-card:focus-within .saved-view-more { opacity: 1; }
 .saved-view-more:hover { color: var(--text); background: var(--panel-deep); }
 .saved-view-more svg { width: 14px; height: 14px; }
-.saved-thumb { width: 43px; height: 43px; display: grid; place-items: center; overflow: hidden; border-radius: 5px; color: #99a9b5; background: #111820; }
-.saved-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.saved-thumb svg { width: 17px; height: 17px; }
-.save-view { min-width: 98px; height: 51px; flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--blue) 38%, var(--line)); border-radius: 8px; color: var(--blue); background: color-mix(in srgb, var(--blue) 4%, var(--panel)); cursor: pointer; }
+.save-view { min-width: 112px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--blue) 38%, var(--line)); border-radius: 8px; color: var(--blue); background: color-mix(in srgb, var(--blue) 4%, var(--panel)); cursor: pointer; transition: color .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease; }
 .save-view:hover { border-style: solid; background: var(--blue-soft); }
 .save-view svg { width: 14px; height: 14px; }
+.save-view.delete-view-target { border-style: solid; border-color: color-mix(in srgb, var(--red) 52%, var(--line)); color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--panel)); cursor: grabbing; }
+.save-view.delete-view-target.over { border-color: var(--red); background: color-mix(in srgb, var(--red) 16%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 14%, transparent); transform: scale(1.02); }
+.saved-view-dragging, .saved-view-dragging * { cursor: grabbing !important; }
 .tray-batch { margin-left: auto; flex: none; white-space: nowrap; }
 .saved-view-menu-layer { position: fixed; inset: 0; z-index: 100; }
 .saved-view-menu { position: fixed; width: 148px; padding: 5px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--panel) 96%, transparent); box-shadow: 0 12px 34px rgba(18, 31, 45, .22); backdrop-filter: blur(16px); }

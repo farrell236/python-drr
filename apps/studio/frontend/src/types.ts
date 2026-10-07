@@ -117,7 +117,6 @@ export interface SavedView {
   id: string
   name: string
   settings: RenderSettings
-  imageUrl?: string
 }
 
 export interface BackendInfo {
