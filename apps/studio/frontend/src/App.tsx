@@ -1,4 +1,4 @@
-import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Settings2, Upload, Zap } from 'lucide-react'
+import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Settings2, Trash2, Upload, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { cancelJob, createBatch, createRender, getRuntime, uploadVolume, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
@@ -197,7 +197,10 @@ export default function App() {
   }
 
   const saveView = () => {
-    const name = `View ${savedViews.length + 1}`
+    const usedNames = new Set(savedViews.map((view) => view.name))
+    let viewNumber = 1
+    while (usedNames.has(`View ${viewNumber}`)) viewNumber += 1
+    const name = `View ${viewNumber}`
     const matchesImage = !!renderedSettings && (Object.keys(activeSettings) as (keyof RenderSettings)[]).every((key) => activeSettings[key] === renderedSettings[key])
     setSavedViews((current) => [...current, { id: crypto.randomUUID(), name, settings: activeSettings, imageUrl: matchesImage ? activeRender?.image_url || undefined : undefined }])
   }
@@ -241,8 +244,16 @@ export default function App() {
               <ProjectionViewer job={activeRender} settings={activeSettings} renderedSettings={renderedSettings} />
             </div>
             <section className="acquisition-tray">
-              <div className="tray-title"><span className="eyebrow">Acquisition tray</span><b>{savedViews.length ? `${savedViews.length} saved views` : 'Single view'}</b></div>
-              {savedViews.map((view) => <button type="button" key={view.id} className="saved-view" onClick={() => setSettings(view.settings)}><span className="saved-thumb">{view.imageUrl ? <img src={view.imageUrl} alt="" /> : <ScanLine />}</span><span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span></button>)}
+              <div className="tray-title"><span className="eyebrow">Acquisition tray</span><b>{savedViews.length ? `${savedViews.length} saved ${savedViews.length === 1 ? 'view' : 'views'}` : 'Single view'}</b></div>
+              {savedViews.map((view) => (
+                <div className="saved-view-card" key={view.id}>
+                  <button type="button" className="saved-view" onClick={() => setSettings(view.settings)}>
+                    <span className="saved-thumb">{view.imageUrl ? <img src={view.imageUrl} alt="" /> : <ScanLine />}</span>
+                    <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
+                  </button>
+                  <button type="button" className="saved-view-delete" aria-label={`Delete ${view.name}`} title={`Delete ${view.name}`} onClick={() => setSavedViews((current) => current.filter((item) => item.id !== view.id))}><Trash2 /></button>
+                </div>
+              ))}
               <button type="button" className="save-view" onClick={saveView}><Plus /> Save view</button>
               <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
             </section>
