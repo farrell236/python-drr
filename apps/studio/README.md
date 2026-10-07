@@ -38,9 +38,10 @@ the installed commands are `pydrr` and `pydrr-studio`.
   while CT window controls remain specific to the three slice views. Rendering
   data is loaded lazily as a bounded display copy; the original volume remains
   unchanged for projection generation. Physical orientation labels, slice
-  navigation, pan, zoom, and reset controls are included. The four views form
-  one continuous 2 × 2 surface with compact in-image labels. Clicking a slice
-  positions the shared acquisition isocenter.
+  navigation, zoom, and reset controls are included. The four views form
+  one continuous 2 × 2 surface with compact in-image labels, including on
+  narrow displays. Clicking or dragging within a slice moves the shared
+  crosshair through the other two views while the dragged image stays fixed.
 - **Acquire** configures and renders a single projection from that isocenter.
 - **Batch** previews and executes an angle sweep with the active geometry.
 - **Results** lists completed projections and downloadable archives from the

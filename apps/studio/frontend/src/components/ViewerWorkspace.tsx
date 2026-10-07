@@ -1,6 +1,6 @@
 import { Crosshair, LocateFixed, RotateCcw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import { volumeSliceUrl } from '../api'
 import type { RenderSettings, SliceAxis, VolumeInfo, VolumeRenderMode, VolumeRenderSettings, VoxelZYX, WindowLevel } from '../types'
 import { clampVoxel, orientationLabels, planeGeometry, planePointToVoxel, voxelToPlanePoint, voxelToWorld, worldToVoxel } from '../viewerGeometry'
@@ -21,14 +21,6 @@ interface SliceViewportProps {
   voxel: VoxelZYX
   windowLevel: WindowLevel
   onVoxelChange: (voxel: VoxelZYX) => void
-}
-
-interface DragState {
-  clientX: number
-  clientY: number
-  panX: number
-  panY: number
-  moved: boolean
 }
 
 const AXIS_NAMES: Record<SliceAxis, string> = {
@@ -63,10 +55,9 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
   const point = voxelToPlanePoint(volume, axis, voxel)
   const labels = orientationLabels(volume, axis)
   const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
   const [loading, setLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
-  const drag = useRef<DragState | null>(null)
+  const dragging = useRef(false)
   const imageUrl = volumeSliceUrl(volume.id, axis, index, windowLevel.center, windowLevel.width)
 
   useEffect(() => {
@@ -76,7 +67,6 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
 
   const resetView = () => {
     setZoom(1)
-    setPan({ x: 0, y: 0 })
   }
 
   const setSlice = (nextIndex: number) => {
@@ -101,52 +91,40 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
     ))
   }
 
-  const endPointer = (event: ReactPointerEvent<SVGSVGElement>) => {
-    const state = drag.current
-    if (!state) return
-    if (!state.moved) pointFromPointer(event)
-    drag.current = null
-    event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
   const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault()
     setSlice(index + (event.deltaY > 0 ? 1 : -1))
   }
-
-  const style = {
-    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-  } as CSSProperties
 
   return (
     <section className="mpr-panel">
       <div className="slice-stage">
         <span className={`viewport-label ${axis}`}><ScanLine /> {AXIS_NAMES[axis]}</span>
         <svg
-          className={`slice-content ${drag.current?.moved ? 'panning' : ''}`}
+          className="slice-content"
           viewBox={`0 0 ${geometry.width} ${geometry.height}`}
           width={geometry.width}
           height={geometry.height}
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={`${AXIS_NAMES[axis]} CT slice ${index + 1}`}
-          style={style}
+          style={{ transform: `scale(${zoom})` }}
           onWheel={handleWheel}
           onPointerDown={(event) => {
             if (event.button !== 0) return
             event.currentTarget.setPointerCapture(event.pointerId)
-            drag.current = { clientX: event.clientX, clientY: event.clientY, panX: pan.x, panY: pan.y, moved: false }
+            dragging.current = true
+            pointFromPointer(event)
           }}
           onPointerMove={(event) => {
-            const state = drag.current
-            if (!state) return
-            const dx = event.clientX - state.clientX
-            const dy = event.clientY - state.clientY
-            if (Math.hypot(dx, dy) > 3) state.moved = true
-            if (state.moved) setPan({ x: state.panX + dx, y: state.panY + dy })
+            if (dragging.current) pointFromPointer(event)
           }}
-          onPointerUp={endPointer}
-          onPointerCancel={() => { drag.current = null }}
+          onPointerUp={(event) => {
+            dragging.current = false
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+          }}
+          onPointerCancel={() => { dragging.current = false }}
+          onLostPointerCapture={() => { dragging.current = false }}
         >
           <image
             href={imageUrl}
@@ -328,7 +306,7 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
               <div><dt>Voxel</dt><dd>{rounded(voxel[2], 1)} · {rounded(voxel[1], 1)} · {rounded(voxel[0], 1)}</dd></div>
             </dl>
           </div>
-          <small className="isocenter-hint">Values are X · Y · Z. Click any slice to reposition.</small>
+          <small className="isocenter-hint">Values are X · Y · Z. Click or drag a slice to reposition.</small>
           <div className="isocenter-actions">
             <button type="button" className="button secondary" onClick={centerIsocenter}><RotateCcw /> Center</button>
             <button type="button" className="button primary" onClick={onOpenAcquire}><Crosshair /> Use in Acquire</button>
@@ -365,7 +343,7 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
               </label>
             )
           })}
-          <small>Scroll over a 2D view or use these linked controls.</small>
+          <small>Scroll changes that plane; dragging navigates the other two.</small>
         </section>
 
         <div className="viewer-controls-spacer" />
