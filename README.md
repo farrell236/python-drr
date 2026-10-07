@@ -115,7 +115,7 @@ pydrr-studio
 ```
 
 <p align="center">
-  <img src="docs/assets/studio-viewer.jpg" width="100%" alt="PyDRR Studio linked CT Viewer with axial, coronal, sagittal, and 3D panes" />
+  <img src="docs/assets/studio-hero-viewer-acquire.jpg" width="100%" alt="PyDRR Studio Viewer and Acquire workspaces side by side" />
 </p>
 
 ### Features
