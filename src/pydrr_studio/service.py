@@ -20,9 +20,9 @@ import numpy as np
 
 from pydrr.geometry import DRRGeometry, make_orbit_pose
 from pydrr.visualization import normalize_image
-from pydrr.volume import Volume, load_volume_sitk, volume_center_world_xyz
+from pydrr.volume import Volume, load_volume_sitk, volume_center_world_xyz, voxel_zyx_to_world_xyz
 
-from .models import BatchSettings, JobInfo, RenderSettings, VolumeInfo
+from .models import BatchSettings, JobInfo, RenderSettings, VolumeInfo, VoxelSample
 from .runtime import RuntimeManager, runtime_manager
 
 
@@ -108,6 +108,36 @@ def build_geometry(vol: Volume, settings: RenderSettings) -> tuple[DRRGeometry, 
     return geometry, iso_center.astype(np.float32)
 
 
+def volume_geometry_status(volume: Volume) -> tuple[bool, str | None]:
+    spacing = np.asarray(volume.spacing_zyx, dtype=float)
+    direction = np.asarray(volume.direction, dtype=float)
+    if spacing.shape != (3,) or not np.isfinite(spacing).all() or np.any(spacing <= 0.0):
+        return False, "Acquisition is disabled because the volume spacing is invalid."
+    if direction.shape != (3, 3) or not np.isfinite(direction).all():
+        return False, "Acquisition is disabled because the direction matrix is invalid."
+    determinant = float(np.linalg.det(direction))
+    if abs(determinant) < 1e-8:
+        return False, "Acquisition is disabled because the direction matrix is singular."
+    if not np.allclose(direction.T @ direction, np.eye(3), atol=1e-5):
+        return False, (
+            "Acquisition is disabled because the direction matrix is not orthonormal. "
+            "The volume can still be inspected in the Viewer."
+        )
+    return True, None
+
+
+def validate_viewable_volume_geometry(volume: Volume) -> None:
+    """Reject geometry that cannot support stable world/voxel navigation."""
+    spacing = np.asarray(volume.spacing_zyx, dtype=float)
+    direction = np.asarray(volume.direction, dtype=float)
+    if spacing.shape != (3,) or not np.isfinite(spacing).all() or np.any(spacing <= 0.0):
+        raise ValueError("Volume spacing must contain three finite positive values")
+    if direction.shape != (3, 3) or not np.isfinite(direction).all():
+        raise ValueError("Volume direction must be a finite 3 by 3 matrix")
+    if abs(float(np.linalg.det(direction))) < 1e-8:
+        raise ValueError("Volume direction matrix is singular")
+
+
 @dataclass
 class VolumeRecord:
     id: str
@@ -168,6 +198,7 @@ class StudioService:
             shutil.copyfileobj(source, destination, length=1024 * 1024)
         try:
             volume = load_volume_sitk(str(path))
+            validate_viewable_volume_geometry(volume)
         except Exception:
             shutil.rmtree(volume_dir, ignore_errors=True)
             raise
@@ -178,11 +209,7 @@ class StudioService:
 
     def volume_info(self, record: VolumeRecord) -> VolumeInfo:
         direction = np.asarray(record.volume.direction, dtype=float)
-        orientation_warning = None
-        if not np.allclose(direction.T @ direction, np.eye(3), atol=1e-5):
-            orientation_warning = (
-                "This volume has a non-orthonormal direction matrix; physical geometry may be invalid."
-            )
+        geometry_valid, orientation_warning = volume_geometry_status(record.volume)
         center = volume_center_world_xyz(record.volume)
         return VolumeInfo(
             id=record.id,
@@ -194,6 +221,7 @@ class StudioService:
             intensity_min=float(record.volume.data.min()),
             intensity_max=float(record.volume.data.max()),
             center_world_xyz_mm=tuple(float(value) for value in center),
+            geometry_valid=geometry_valid,
             orientation_warning=orientation_warning,
         )
 
@@ -202,6 +230,30 @@ class StudioService:
             record = self.volumes.get(volume_id)
         if record is None:
             raise KeyError(volume_id)
+        return record
+
+    def voxel_sample(self, volume_id: str, voxel_zyx: tuple[float, float, float]) -> VoxelSample:
+        volume = self.get_volume(volume_id).volume
+        rounded = np.rint(np.asarray(voxel_zyx, dtype=float)).astype(int)
+        shape = np.asarray(volume.shape_zyx, dtype=int)
+        rounded = np.clip(rounded, 0, shape - 1)
+        world = voxel_zyx_to_world_xyz(
+            rounded.astype(np.float32)[None],
+            volume.spacing_zyx,
+            volume.origin_zyx,
+            volume.direction,
+        )[0]
+        return VoxelSample(
+            voxel_zyx=tuple(int(value) for value in rounded),
+            world_xyz_mm=tuple(float(value) for value in world),
+            intensity=float(volume.data[tuple(rounded)]),
+        )
+
+    def _require_acquisition_geometry(self, volume_id: str) -> VolumeRecord:
+        record = self.get_volume(volume_id)
+        geometry_valid, warning = volume_geometry_status(record.volume)
+        if not geometry_valid:
+            raise ValueError(warning or "Volume geometry is invalid for acquisition")
         return record
 
     def acquisition_script(self, settings: RenderSettings) -> tuple[str, str]:
@@ -234,6 +286,7 @@ class StudioService:
             f"  --projection-angle={settings.projection_angle_deg:g}",
             f"  --detector-offset-mm {settings.detector_offset_u_mm:g} {settings.detector_offset_v_mm:g}",
             f"  --threshold={threshold:g}",
+            f"  --projection-model {settings.projection_model.replace('_', '-')}",
             f"  --p-lo {settings.p_lo:g}",
             f"  --p-hi {settings.p_hi:g}",
             f"  --backend {settings.backend}",
@@ -310,7 +363,7 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
         return sampled.tobytes(order="C"), dimensions_xyz, spacing_xyz
 
     def create_render(self, settings: RenderSettings) -> JobRecord:
-        self.get_volume(settings.volume_id)
+        self._require_acquisition_geometry(settings.volume_id)
         python_executable, _ = self.runtimes.ensure_backend(settings.backend)
         job = JobRecord(id=uuid.uuid4().hex, kind="render")
         with self.lock:
@@ -319,7 +372,7 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
         return job
 
     def create_batch(self, settings: BatchSettings) -> JobRecord:
-        self.get_volume(settings.render.volume_id)
+        self._require_acquisition_geometry(settings.render.volume_id)
         python_executable, _ = self.runtimes.ensure_backend(settings.render.backend)
         count = int(math.floor((settings.end_angle_deg - settings.start_angle_deg) / settings.step_deg)) + 1
         job = JobRecord(id=uuid.uuid4().hex, kind="batch", frame_count=count)

@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 from ..volume import Volume, world_xyz_to_image_physical_xyz
+from ..attenuation import validate_projection_model
 
 
 def ray_box_intersection(
@@ -40,6 +41,7 @@ def ray_integral_siddon_jacobs(
     end_xyz: np.ndarray,
     hu_air_threshold: Optional[float] = -900.0,
     clamp_negative_to_zero: bool = True,
+    projection_model: str = "raw",
     eps: float = 1e-8,
 ) -> float:
     """Siddon/Jacobs-style line integral through a voxel grid.
@@ -47,9 +49,11 @@ def ray_integral_siddon_jacobs(
     Notes:
         - Rays are transformed from world coordinates into the image's
           axis-aligned physical frame, so the SimpleITK direction is honored.
-        - Uses voxel values directly as attenuation surrogates.
+        - ``raw`` uses voxel values directly as attenuation surrogates.
+        - ``relative_attenuation`` maps CT HU to water-relative attenuation.
         - Air can be suppressed with `hu_air_threshold`.
     """
+    projection_model = validate_projection_model(projection_model)
     data = vol.data
     nz, ny, nx = data.shape
 
@@ -160,6 +164,8 @@ def ray_integral_siddon_jacobs(
             val = float(data[iz, iy, ix])
             if hu_air_threshold is not None and val < hu_air_threshold:
                 val = 0.0
+            elif projection_model == "relative_attenuation":
+                val = max(0.0, 1.0 + val / 1000.0)
             elif clamp_negative_to_zero:
                 val = max(val, 0.0)
             integral += val * seg_len

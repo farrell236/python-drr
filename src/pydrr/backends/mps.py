@@ -6,6 +6,7 @@ import numpy as np
 
 from ..geometry import DRRGeometry, detector_pixel_centers_world
 from ..volume import Volume, world_xyz_to_image_physical_xyz
+from ..attenuation import validate_projection_model
 
 
 def _require_mps():
@@ -31,6 +32,7 @@ def _render_drr_torch(
     device: str,
     hu_air_threshold: Optional[float] = -900.0,
     clamp_negative_to_zero: bool = True,
+    projection_model: str = "raw",
     candidate_budget: int = 1_500_000,
 ) -> np.ndarray:
     """Exact voxel-boundary ray integration using batched tensor operations.
@@ -41,6 +43,7 @@ def _render_drr_torch(
     execute the batches on Apple Metal.
     """
     import torch
+    projection_model = validate_projection_model(projection_model)
 
     tensor_device = torch.device(device)
     data = torch.as_tensor(vol.data, dtype=torch.float32, device=tensor_device)
@@ -112,10 +115,15 @@ def _render_drr_torch(
         iy = torch.clamp(indices[:, :, 1], 0, ny - 1)
         iz = torch.clamp(indices[:, :, 2], 0, nz - 1)
         values = data[iz, iy, ix]
+        air_mask = None
         if hu_air_threshold is not None:
-            values = torch.where(values < float(hu_air_threshold), 0.0, values)
-        if clamp_negative_to_zero:
+            air_mask = values < float(hu_air_threshold)
+        if projection_model == "relative_attenuation":
+            values = torch.clamp(1.0 + values / 1000.0, min=0.0)
+        elif clamp_negative_to_zero:
             values = torch.clamp(values, min=0.0)
+        if air_mask is not None:
+            values = torch.where(air_mask, 0.0, values)
         segment_valid = ray_valid[:, None] & (segment_length > eps)
         integral = torch.sum(
             torch.where(segment_valid, values * segment_length, 0.0), dim=1
@@ -130,6 +138,7 @@ def render_drr_mps(
     geom: DRRGeometry,
     hu_air_threshold: Optional[float] = -900.0,
     clamp_negative_to_zero: bool = True,
+    projection_model: str = "raw",
 ) -> np.ndarray:
     _require_mps()
     return _render_drr_torch(
@@ -138,4 +147,5 @@ def render_drr_mps(
         device="mps",
         hu_air_threshold=hu_air_threshold,
         clamp_negative_to_zero=clamp_negative_to_zero,
+        projection_model=projection_model,
     )

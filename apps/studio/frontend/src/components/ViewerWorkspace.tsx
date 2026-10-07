@@ -1,8 +1,8 @@
-import { Crosshair, LocateFixed, RotateCcw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
+import { Crosshair, LocateFixed, Maximize2, Minimize2, Move, RotateCcw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
-import { volumeSliceUrl } from '../api'
-import type { AdjustableVolumeRenderMode, RenderSettings, SliceAxis, VolumeInfo, VolumeRenderState, VoxelZYX, WindowLevel } from '../types'
+import { getVoxelSample, volumeSliceUrl } from '../api'
+import type { AdjustableVolumeRenderMode, RenderSettings, SliceAxis, VolumeInfo, VolumeRenderState, VoxelSample, VoxelZYX, WindowLevel } from '../types'
 import { clampVoxel, orientationLabels, planeGeometry, planePointToVoxel, voxelToPlanePoint, voxelToWorld, worldToVoxel } from '../viewerGeometry'
 import { activeVolumeRenderSettings, DEFAULT_RENDER_CONTROLS, VOLUME_RENDER_OPTIONS } from '../volumeRendering'
 import { Volume3DViewport } from './Volume3DViewport'
@@ -24,6 +24,9 @@ interface SliceViewportProps {
   voxel: VoxelZYX
   windowLevel: WindowLevel
   onVoxelChange: (voxel: VoxelZYX) => void
+  maximized: boolean
+  hidden: boolean
+  onToggleMaximize: () => void
 }
 
 const AXIS_NAMES: Record<SliceAxis, string> = {
@@ -37,15 +40,18 @@ function rounded(value: number, digits = 2) {
   return Math.round(value * scale) / scale
 }
 
-function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: SliceViewportProps) {
+function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange, maximized, hidden, onToggleMaximize }: SliceViewportProps) {
   const geometry = planeGeometry(volume, axis)
   const index = Math.round(voxel[geometry.indexAxis])
   const point = voxelToPlanePoint(volume, axis, voxel)
   const labels = orientationLabels(volume, axis)
   const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [tool, setTool] = useState<'crosshair' | 'pan'>('crosshair')
   const [loading, setLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
   const dragging = useRef(false)
+  const panStart = useRef({ clientX: 0, clientY: 0, x: 0, y: 0 })
   const imageUrl = volumeSliceUrl(volume.id, axis, index, windowLevel.center, windowLevel.width)
 
   useEffect(() => {
@@ -55,6 +61,7 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
 
   const resetView = () => {
     setZoom(1)
+    setPan({ x: 0, y: 0 })
   }
 
   const setSlice = (nextIndex: number) => {
@@ -81,11 +88,20 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
 
   const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
     event.preventDefault()
+    if (event.ctrlKey || event.metaKey) {
+      const bounds = event.currentTarget.getBoundingClientRect()
+      const cursor = { x: event.clientX - bounds.left - bounds.width / 2, y: event.clientY - bounds.top - bounds.height / 2 }
+      const nextZoom = Math.min(8, Math.max(0.25, zoom * (event.deltaY > 0 ? 1 / 1.15 : 1.15)))
+      const scale = nextZoom / zoom
+      setPan({ x: cursor.x - scale * (cursor.x - pan.x), y: cursor.y - scale * (cursor.y - pan.y) })
+      setZoom(nextZoom)
+      return
+    }
     setSlice(index + (event.deltaY > 0 ? 1 : -1))
   }
 
   return (
-    <section className="mpr-panel">
+    <section className={`mpr-panel ${maximized ? 'pane-maximized' : ''} ${hidden ? 'pane-hidden' : ''}`}>
       <div className="slice-stage">
         <span className={`viewport-label ${axis}`}><ScanLine /> {AXIS_NAMES[axis]}</span>
         <svg
@@ -96,16 +112,21 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={`${AXIS_NAMES[axis]} CT slice ${index + 1}`}
-          style={{ transform: `scale(${zoom})` }}
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, cursor: tool === 'pan' ? 'grab' : 'crosshair' }}
           onWheel={handleWheel}
           onPointerDown={(event) => {
             if (event.button !== 0) return
             event.currentTarget.setPointerCapture(event.pointerId)
             dragging.current = true
-            pointFromPointer(event)
+            if (tool === 'pan') {
+              panStart.current = { clientX: event.clientX, clientY: event.clientY, x: pan.x, y: pan.y }
+            } else pointFromPointer(event)
           }}
           onPointerMove={(event) => {
-            if (dragging.current) pointFromPointer(event)
+            if (!dragging.current) return
+            if (tool === 'pan') {
+              setPan({ x: panStart.current.x + event.clientX - panStart.current.clientX, y: panStart.current.y + event.clientY - panStart.current.clientY })
+            } else pointFromPointer(event)
           }}
           onPointerUp={(event) => {
             dragging.current = false
@@ -137,6 +158,8 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
           <span>{Math.round(zoom * 100)}%</span>
           <button type="button" aria-label={`Zoom in ${axis} view`} title="Zoom in" onClick={() => setZoom((value) => Math.min(4, value * 1.2))}><ZoomIn /></button>
           <button type="button" aria-label={`Reset ${axis} view`} title="Fit image" onClick={resetView}><RotateCcw /></button>
+          <button type="button" className={tool === 'pan' ? 'active' : ''} aria-label={`Pan ${axis} view`} title="Toggle pan tool" onClick={() => setTool((current) => current === 'pan' ? 'crosshair' : 'pan')}><Move /></button>
+          <button type="button" aria-label={`${maximized ? 'Restore' : 'Maximize'} ${axis} view`} title={maximized ? 'Restore 2×2 layout' : 'Maximize pane'} onClick={onToggleMaximize}>{maximized ? <Minimize2 /> : <Maximize2 />}</button>
         </div>
       </div>
     </section>
@@ -144,6 +167,9 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
 }
 
 export function ViewerWorkspace({ volume, settings, windowLevel, volumeRenderState, onWindowLevelChange, onVolumeRenderStateChange, onIsocenterChange, onOpenAcquire }: ViewerProps) {
+  const [maximizedPane, setMaximizedPane] = useState<SliceAxis | '3d' | null>(null)
+  const [sample, setSample] = useState<VoxelSample | null>(null)
+  const [coordinateMode, setCoordinateMode] = useState<'world' | 'voxel'>('world')
   const isocenterWorld = useMemo<[number, number, number]>(() => [
     volume.center_world_xyz_mm[0] + settings.translate_x_mm,
     volume.center_world_xyz_mm[1] + settings.translate_y_mm,
@@ -161,6 +187,16 @@ export function ViewerWorkspace({ volume, settings, windowLevel, volumeRenderSta
   const adjustableRenderMode: AdjustableVolumeRenderMode | null = volumeRenderState.mode === 'slices' ? null : volumeRenderState.mode
   const volumeRendering = activeVolumeRenderSettings(volumeRenderState)
   const shiftLimit = Math.max(500, Math.min(3000, Math.ceil(intensityRange / 2 / 100) * 100))
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getVoxelSample(volume.id, voxel, controller.signal)
+      .then(setSample)
+      .catch((sampleError) => {
+        if (!(sampleError instanceof DOMException && sampleError.name === 'AbortError')) setSample(null)
+      })
+    return () => controller.abort()
+  }, [volume.id, Math.round(voxel[0]), Math.round(voxel[1]), Math.round(voxel[2])])
 
   const setVolumeRenderControl = (field: 'shift' | 'opacity', value: number) => {
     if (!adjustableRenderMode) return
@@ -205,11 +241,11 @@ export function ViewerWorkspace({ volume, settings, windowLevel, volumeRenderSta
 
   return (
     <main className="viewer-workspace">
-      <div className="mpr-grid">
+      <div className={`mpr-grid ${maximizedPane ? 'has-maximized-pane' : ''}`}>
         {(['axial', 'coronal', 'sagittal'] as SliceAxis[]).map((axis) => (
-          <SliceViewport key={axis} axis={axis} volume={volume} voxel={voxel} windowLevel={windowLevel} onVoxelChange={setVoxel} />
+          <SliceViewport key={axis} axis={axis} volume={volume} voxel={voxel} windowLevel={windowLevel} onVoxelChange={setVoxel} maximized={maximizedPane === axis} hidden={maximizedPane !== null && maximizedPane !== axis} onToggleMaximize={() => setMaximizedPane((current) => current === axis ? null : axis)} />
         ))}
-        <Volume3DViewport volume={volume} voxel={voxel} windowLevel={windowLevel} rendering={volumeRendering} />
+        <Volume3DViewport volume={volume} voxel={voxel} windowLevel={windowLevel} rendering={volumeRendering} maximized={maximizedPane === '3d'} hidden={maximizedPane !== null && maximizedPane !== '3d'} onToggleMaximize={() => setMaximizedPane((current) => current === '3d' ? null : '3d')} />
       </div>
 
       <aside className="viewer-controls">
@@ -289,12 +325,21 @@ export function ViewerWorkspace({ volume, settings, windowLevel, volumeRenderSta
             <dl>
               <div><dt>World</dt><dd>{rounded(isocenterWorld[0])} · {rounded(isocenterWorld[1])} · {rounded(isocenterWorld[2])} mm</dd></div>
               <div><dt>Voxel</dt><dd>{rounded(voxel[2], 1)} · {rounded(voxel[1], 1)} · {rounded(voxel[0], 1)}</dd></div>
+              <div><dt>Value</dt><dd>{sample ? `${rounded(sample.intensity, 1)} HU` : 'Reading…'}</dd></div>
             </dl>
           </div>
+          <div className="coordinate-mode" role="group" aria-label="Isocenter coordinate system">
+            <button type="button" className={coordinateMode === 'world' ? 'active' : ''} onClick={() => setCoordinateMode('world')}>World mm</button>
+            <button type="button" className={coordinateMode === 'voxel' ? 'active' : ''} onClick={() => setCoordinateMode('voxel')}>Voxel</button>
+          </div>
+          <CoordinateEditor mode={coordinateMode} world={isocenterWorld} voxel={voxel} onApply={(values) => {
+            if (coordinateMode === 'world') setVoxel(worldToVoxel(volume, values))
+            else setVoxel([values[2], values[1], values[0]])
+          }} />
           <small className="isocenter-hint">Values are X · Y · Z. Click or drag a slice to reposition.</small>
           <div className="isocenter-actions">
             <button type="button" className="button secondary" onClick={centerIsocenter}><RotateCcw /> Center</button>
-            <button type="button" className="button primary" onClick={onOpenAcquire}><Crosshair /> Use in Acquire</button>
+            <button type="button" className="button primary" disabled={!volume.geometry_valid} title={volume.geometry_valid ? undefined : volume.orientation_warning || 'Invalid physical geometry'} onClick={onOpenAcquire}><Crosshair /> Use in Acquire</button>
           </div>
         </section>
 
@@ -334,5 +379,22 @@ export function ViewerWorkspace({ volume, settings, windowLevel, volumeRenderSta
         <div className="viewer-controls-spacer" />
       </aside>
     </main>
+  )
+}
+
+function CoordinateEditor({ mode, world, voxel, onApply }: { mode: 'world' | 'voxel'; world: [number, number, number]; voxel: VoxelZYX; onApply: (valuesXYZ: [number, number, number]) => void }) {
+  const values = mode === 'world' ? world : [voxel[2], voxel[1], voxel[0]]
+  const [draft, setDraft] = useState(() => values.map((value) => String(rounded(value, 3))))
+  useEffect(() => setDraft(values.map((value) => String(rounded(value, 3)))), [mode, values[0], values[1], values[2]])
+  const apply = () => {
+    const parsed = draft.map(Number)
+    if (parsed.every(Number.isFinite)) onApply(parsed as [number, number, number])
+  }
+  return (
+    <div className="coordinate-editor">
+      {(['X', 'Y', 'Z'] as const).map((label, index) => (
+        <label key={label}><span>{label}</span><input type="number" step={mode === 'world' ? 0.1 : 1} value={draft[index]} onChange={(event) => setDraft((current) => current.map((value, item) => item === index ? event.target.value : value))} onBlur={apply} onKeyDown={(event) => { if (event.key === 'Enter') apply() }} /></label>
+      ))}
+    </div>
   )
 }

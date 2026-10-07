@@ -38,13 +38,20 @@ the installed commands are `pydrr` and `pydrr-studio`.
   while CT window controls remain specific to the three slice views. Rendering
   data is loaded lazily as a bounded display copy; the original volume remains
   unchanged for projection generation. Physical orientation labels, slice
-  navigation, zoom, and reset controls are included. The four views form
+  navigation, crosshair HU sampling, precise world/voxel isocenter entry,
+  cursor-aware zoom, panning, reset, and temporary pane maximization are
+  included. The four views form
   one continuous 2 × 2 surface with compact in-image labels, including on
   narrow displays. Clicking or dragging within a slice moves the shared
   crosshair through the other two views while the dragged image stays fixed.
 - **Acquire** configures and renders a single projection from that isocenter.
   Its geometry view carries over the active slice planes or volume preset,
-  including the current intensity shift and opacity.
+  including the current intensity shift and opacity. Anatomically correct AP,
+  PA, left-lateral, and right-lateral presets are paired with exact geometry
+  inputs, dynamic detector orientation labels, source-to-detector and FOV
+  metrics, clipping warnings, cancellable jobs, and a pannable/zoomable preview.
+  A completed preview keeps its acquisition settings and is marked stale when
+  the controls no longer match it.
 - **Batch** previews and executes an angle sweep with the active geometry and
   the same patient rendering selected in Viewer.
 - **Results** lists completed projections and downloadable archives from the
@@ -56,6 +63,14 @@ the installed commands are `pydrr` and `pydrr-studio`.
 The Viewer converts between voxel indices and physical world coordinates using
 the NIfTI spacing, origin, and direction matrix. Its isocenter therefore uses
 the same coordinate convention as the core projector.
+Volumes with invalid spacing or a non-orthonormal direction matrix can be
+inspected, but Studio blocks acquisition until their physical geometry is
+corrected.
+
+The projection model can preserve PyDRR's original raw CT-value sum or convert
+HU to water-relative attenuation with `max(0, 1 + HU/1000)`. The latter is a
+relative, energy-independent model rather than an absolute X-ray spectrum
+simulation.
 
 ## Compute environment
 

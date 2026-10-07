@@ -15,6 +15,7 @@ from .models import (
     RenderSettings,
     RuntimeInfo,
     VolumeInfo,
+    VoxelSample,
 )
 from .runtime import runtime_manager
 from .service import StudioService
@@ -113,6 +114,19 @@ def volume_render_data(
             "Cache-Control": "private, max-age=3600",
         },
     )
+
+
+@app.get("/api/volumes/{volume_id}/sample", response_model=VoxelSample)
+def volume_sample(
+    volume_id: str,
+    z: float = Query(...),
+    y: float = Query(...),
+    x: float = Query(...),
+) -> VoxelSample:
+    try:
+        return service.voxel_sample(volume_id, (z, y, x))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Volume not found") from exc
 
 
 @app.post("/api/renders", response_model=JobCreated, status_code=202)

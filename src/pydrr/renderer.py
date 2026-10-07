@@ -72,6 +72,7 @@ def generate_drr(
             geom=geom,
             hu_air_threshold=projector_kwargs.get("hu_air_threshold", -900.0),
             clamp_negative_to_zero=projector_kwargs.get("clamp_negative_to_zero", True),
+            projection_model=projector_kwargs.get("projection_model", "raw"),
         )
 
     if backend == "mps":
@@ -86,6 +87,7 @@ def generate_drr(
             geom=geom,
             hu_air_threshold=projector_kwargs.get("hu_air_threshold", -900.0),
             clamp_negative_to_zero=projector_kwargs.get("clamp_negative_to_zero", True),
+            projection_model=projector_kwargs.get("projection_model", "raw"),
         )
 
     if mp_chunksize < 1:

@@ -6,6 +6,7 @@ import numpy as np
 
 from ..geometry import DRRGeometry, detector_pixel_centers_world
 from ..volume import Volume, world_xyz_to_image_physical_xyz
+from ..attenuation import validate_projection_model
 
 
 def _require_cupy():
@@ -49,6 +50,7 @@ void siddon_drr_kernel(
     const int N,
     const float hu_air_threshold,
     const int clamp_negative_to_zero,
+    const int projection_model,
     float* out
 ) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
@@ -224,6 +226,8 @@ void siddon_drr_kernel(
 
             if (val < hu_air_threshold) {
                 val = 0.0f;
+            } else if (projection_model == 1) {
+                val = fmaxf(0.0f, 1.0f + val / 1000.0f);
             } else if (clamp_negative_to_zero && val < 0.0f) {
                 val = 0.0f;
             }
@@ -252,9 +256,11 @@ def render_drr_cuda(
     geom: DRRGeometry,
     hu_air_threshold: Optional[float] = -900.0,
     clamp_negative_to_zero: bool = True,
+    projection_model: str = "raw",
     stream=None,
 ) -> np.ndarray:
     cp = _require_cupy()
+    projection_model = validate_projection_model(projection_model)
     kernel = cp.RawKernel(_CUDA_SRC, "siddon_drr_kernel")
 
     gpu_vol = upload_volume_to_gpu(vol)
@@ -295,6 +301,7 @@ def render_drr_cuda(
         np.int32(N),
         np.float32(-900.0 if hu_air_threshold is None else hu_air_threshold),
         np.int32(1 if clamp_negative_to_zero else 0),
+        np.int32(1 if projection_model == "relative_attenuation" else 0),
         out_gpu,
     )
 

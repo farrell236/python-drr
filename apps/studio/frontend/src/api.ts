@@ -1,4 +1,4 @@
-import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, VolumeInfo, VolumeRenderData } from './types'
+import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, VolumeInfo, VolumeRenderData, VoxelSample, VoxelZYX } from './types'
 
 export function apiUrl(path: string) {
   return path
@@ -74,6 +74,11 @@ export function volumeSliceUrl(volumeId: string, axis: string, index: number, wi
     window_width: String(windowWidth),
   })
   return apiUrl(`/api/volumes/${encodeURIComponent(volumeId)}/slices/${axis}?${query}`)
+}
+
+export function getVoxelSample(volumeId: string, voxel: VoxelZYX, signal?: AbortSignal): Promise<VoxelSample> {
+  const query = new URLSearchParams({ z: String(voxel[0]), y: String(voxel[1]), x: String(voxel[2]) })
+  return request(`/api/volumes/${encodeURIComponent(volumeId)}/sample?${query}`, { signal })
 }
 
 function parseNumberTuple(value: string | null, label: string): [number, number, number] {

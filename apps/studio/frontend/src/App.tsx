@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS: RenderSettings = {
   detector_offset_v_mm: 0,
   hu_air_threshold: -900,
   clamp_negative_to_zero: true,
+  projection_model: 'raw',
   invert: true,
   p_lo: 1,
   p_hi: 99.5,
@@ -64,6 +65,7 @@ export default function App() {
   const [volumeRenderState, setVolumeRenderState] = useState(defaultVolumeRenderState)
   const [batchSettings, setBatchSettings] = useState<BatchSettings>({ render: renderDefaults(initialPreferences), start_angle_deg: 0, end_angle_deg: 355, step_deg: 5, shared_normalization: true, include_raw: true })
   const [activeRender, setActiveRender] = useState<JobInfo | null>(null)
+  const [renderedSettings, setRenderedSettings] = useState<RenderSettings | null>(null)
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
   const [jobs, setJobs] = useState<JobInfo[]>([])
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
@@ -136,6 +138,7 @@ export default function App() {
       setSettings(next)
       setBatchSettings((current) => ({ ...current, render: next }))
       setActiveRender(null)
+      setRenderedSettings(null)
       setActiveBatch(null)
       setSavedViews([])
       setWindowLevel(defaultWindowLevel(info))
@@ -152,14 +155,27 @@ export default function App() {
     if (!volume) return
     setError(null)
     try {
-      const created = await createRender(activeSettings)
-      const initial: JobInfo = { id: created.id, kind: 'render', status: 'queued', progress: 0, message: 'Queued', created_at: new Date().toISOString(), started_at: null, completed_at: null, error: null, frame_count: null, current_angle_deg: settings.projection_angle_deg, image_url: null, download_url: null, metadata: null }
+      const submittedSettings = { ...activeSettings }
+      const created = await createRender(submittedSettings)
+      const initial: JobInfo = { id: created.id, kind: 'render', status: 'queued', progress: 0, message: 'Queued', created_at: new Date().toISOString(), started_at: null, completed_at: null, error: null, frame_count: null, current_angle_deg: submittedSettings.projection_angle_deg, image_url: null, download_url: null, metadata: null }
       setActiveRender(initial)
+      setRenderedSettings(submittedSettings)
       addOrUpdateJob(initial)
       const complete = await waitForJob(created.id, (job) => { setActiveRender(job); addOrUpdateJob(job) })
       if (complete.status === 'failed') setError(complete.error || 'Projection failed')
     } catch (renderError) {
       setError(renderError instanceof Error ? renderError.message : 'Projection failed')
+    }
+  }
+
+  const cancelActiveRender = async () => {
+    if (!activeRender || !['queued', 'running'].includes(activeRender.status)) return
+    try {
+      const cancelled = await cancelJob(activeRender.id)
+      setActiveRender(cancelled)
+      addOrUpdateJob(cancelled)
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : 'Could not cancel the render')
     }
   }
 
@@ -182,7 +198,8 @@ export default function App() {
 
   const saveView = () => {
     const name = `View ${savedViews.length + 1}`
-    setSavedViews((current) => [...current, { id: crypto.randomUUID(), name, settings: activeSettings, imageUrl: activeRender?.image_url || undefined }])
+    const matchesImage = !!renderedSettings && (Object.keys(activeSettings) as (keyof RenderSettings)[]).every((key) => activeSettings[key] === renderedSettings[key])
+    setSavedViews((current) => [...current, { id: crypto.randomUUID(), name, settings: activeSettings, imageUrl: matchesImage ? activeRender?.image_url || undefined : undefined }])
   }
 
   if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} onUpload={handleUpload} /></div>
@@ -221,7 +238,7 @@ export default function App() {
                 <header className="panel-header"><span><Box /> Acquisition geometry</span><span className="status completed"><i />{volumeRenderLabel(volumeRendering)}</span></header>
                 <AcquisitionScene volume={volume} settings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} />
               </section>
-              <ProjectionViewer job={activeRender} settings={activeSettings} />
+              <ProjectionViewer job={activeRender} settings={activeSettings} renderedSettings={renderedSettings} />
             </div>
             <section className="acquisition-tray">
               <div className="tray-title"><span className="eyebrow">Acquisition tray</span><b>{savedViews.length ? `${savedViews.length} saved views` : 'Single view'}</b></div>
@@ -230,7 +247,7 @@ export default function App() {
               <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
             </section>
           </div>
-          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onValidationError={setError} onReset={() => setSettings(renderDefaults(preferences, volume.id))} volumeFilename={volume.filename} />
+          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onCancel={() => void cancelActiveRender()} onValidationError={setError} onReset={() => setSettings(renderDefaults(preferences, volume.id))} volumeFilename={volume.filename} volume={volume} />
         </main>
       )}
 

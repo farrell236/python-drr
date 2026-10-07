@@ -1,5 +1,6 @@
 export type Workspace = 'viewer' | 'acquire' | 'batch' | 'results' | 'settings'
 export type BackendName = 'auto' | 'cpu' | 'cuda' | 'mps'
+export type ProjectionModelName = 'raw' | 'relative_attenuation'
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type SliceAxis = 'axial' | 'coronal' | 'sagittal'
 export type VoxelZYX = [number, number, number]
@@ -49,7 +50,14 @@ export interface VolumeInfo {
   intensity_min: number
   intensity_max: number
   center_world_xyz_mm: [number, number, number]
+  geometry_valid: boolean
   orientation_warning: string | null
+}
+
+export interface VoxelSample {
+  voxel_zyx: [number, number, number]
+  world_xyz_mm: [number, number, number]
+  intensity: number
 }
 
 export interface RenderSettings {
@@ -71,6 +79,7 @@ export interface RenderSettings {
   detector_offset_v_mm: number
   hu_air_threshold: number | null
   clamp_negative_to_zero: boolean
+  projection_model: ProjectionModelName
   invert: boolean
   p_lo: number
   p_hi: number

@@ -1,4 +1,4 @@
-import { Box, RotateCcw } from 'lucide-react'
+import { Box, Maximize2, Minimize2, RotateCcw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import '@kitware/vtk.js/Rendering/Profiles/Geometry'
 import '@kitware/vtk.js/Rendering/Profiles/Volume'
@@ -31,6 +31,9 @@ interface Props {
   voxel: VoxelZYX
   windowLevel: WindowLevel
   rendering: VolumeRenderSettings
+  maximized?: boolean
+  hidden?: boolean
+  onToggleMaximize?: () => void
 }
 
 type Point3 = [number, number, number]
@@ -52,7 +55,7 @@ function addActor(
   return actor
 }
 
-export function Volume3DViewport({ volume, voxel, windowLevel, rendering }: Props) {
+export function Volume3DViewport({ volume, voxel, windowLevel, rendering, maximized = false, hidden = false, onToggleMaximize }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const resetCameraRef = useRef<() => void>(() => undefined)
   const updateSlicesRef = useRef<(next: VoxelZYX, nextWindowLevel: WindowLevel) => void>(() => undefined)
@@ -298,12 +301,13 @@ export function Volume3DViewport({ volume, voxel, windowLevel, rendering }: Prop
   const renderingLabel = volumeRenderLabel(rendering)
 
   return (
-    <section className="mpr-panel viewer-3d-panel">
+    <section className={`mpr-panel viewer-3d-panel ${maximized ? 'pane-maximized' : ''} ${hidden ? 'pane-hidden' : ''}`}>
       <div className="viewer-3d-stage">
         <span className="viewport-label three-dimensional"><Box /> 3D</span>
         <div ref={containerRef} className="viewer-3d-canvas" aria-label={`Interactive three-dimensional ${renderingLabel.toLowerCase()} view`} />
         <div className="viewer-3d-toolbar" role="toolbar" aria-label="Three-dimensional viewer controls">
           <button type="button" onClick={() => resetCameraRef.current()} title="Reset to the default three-quarter view"><RotateCcw /> Reset</button>
+          {onToggleMaximize && <button type="button" onClick={onToggleMaximize} title={maximized ? 'Restore 2×2 layout' : 'Maximize pane'}>{maximized ? <Minimize2 /> : <Maximize2 />}</button>}
         </div>
         <div className="viewer-3d-axis-key" aria-hidden="true">
           <span className="axis-x">X · L</span>

@@ -15,10 +15,18 @@ class VolumeInfo(BaseModel):
     intensity_min: float
     intensity_max: float
     center_world_xyz_mm: tuple[float, float, float]
+    geometry_valid: bool = True
     orientation_warning: str | None = None
 
 
+class VoxelSample(BaseModel):
+    voxel_zyx: tuple[int, int, int]
+    world_xyz_mm: tuple[float, float, float]
+    intensity: float
+
+
 BackendName = Literal["auto", "cpu", "cuda", "mps"]
+ProjectionModelName = Literal["raw", "relative_attenuation"]
 
 
 class BackendInfo(BaseModel):
@@ -69,6 +77,7 @@ class RenderSettings(BaseModel):
     detector_offset_v_mm: float = Field(0.0, ge=-1000.0, le=1000.0)
     hu_air_threshold: float | None = Field(-900.0, ge=-10000.0, le=10000.0)
     clamp_negative_to_zero: bool = True
+    projection_model: ProjectionModelName = "raw"
     invert: bool = True
     p_lo: float = Field(1.0, ge=0.0, le=100.0)
     p_hi: float = Field(99.5, ge=0.0, le=100.0)

@@ -32,6 +32,11 @@ Rendering backends live under `pydrr.backends`:
 - `mps.py` contains the PyTorch Apple Metal projector.
 - `registry.py` reports availability and resolves `auto` selections.
 
+`attenuation.py` defines the shared projection-model contract. The CPU, CUDA,
+and MPS projectors implement both the legacy raw CT-value sum and the same
+water-relative HU conversion, so changing compute devices does not change the
+meaning of an acquisition.
+
 ## `pydrr_studio`
 
 The `studio` installation extra adds FastAPI, Uvicorn, and multipart upload
@@ -41,7 +46,10 @@ diagnostics. It depends on `pydrr` for all geometry, backend discovery, and
 rendering behavior. Viewer crosshairs are converted between voxel ZYX and
 physical world XYZ coordinates with the uploaded volume's spacing, origin, and
 direction matrix; the resulting world offset is passed directly to the core
-acquisition geometry. Viewer volume-rendering state is owned by the application
+acquisition geometry. The API also provides nearest-voxel intensity samples for
+the Viewer crosshair. Studio classifies physical geometry before rendering and
+blocks acquisition for invalid spacing, singular matrices, or non-orthonormal
+directions while keeping inspectable volumes available in the Viewer. Viewer volume-rendering state is owned by the application
 so its slice planes, transfer-function preset, shift, and opacity remain
 consistent in the Acquire and Batch geometry scenes.
 
@@ -55,5 +63,8 @@ Render and batch jobs run in external subprocesses for cancellation and failure
 isolation. Each worker uses the same Python executable that launched Studio, so
 the CLI, Python API, and Studio see the same installed backends. Studio never
 changes Python environments or installs dependencies.
+The worker stores the complete submitted settings in result metadata; the
+frontend uses that immutable snapshot for preview orientation, captions, and
+stale-result detection.
 
 The core package must never import `pydrr_studio`.

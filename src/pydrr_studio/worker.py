@@ -66,6 +66,7 @@ def _render_array(volume: Volume, settings: RenderSettings) -> tuple[np.ndarray,
         projector_kwargs={
             "hu_air_threshold": settings.hu_air_threshold,
             "clamp_negative_to_zero": settings.clamp_negative_to_zero,
+            "projection_model": settings.projection_model,
         },
         show_progress=False,
         n_cores=workers,
@@ -89,6 +90,7 @@ def _volume_info(volume: Volume, volume_id: str, filename: str) -> dict[str, Any
         "intensity_min": float(volume.data.min()),
         "intensity_max": float(volume.data.max()),
         "center_world_xyz_mm": [float(value) for value in volume_center_world_xyz(volume)],
+        "geometry_valid": warning is None,
         "orientation_warning": warning,
     }
 

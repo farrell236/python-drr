@@ -9,6 +9,7 @@ from .backends import (
 )
 from .renderer import generate_drr, generate_orbit_drrs
 from .visualization import normalize_image, save_png, print_volume_debug, print_geometry_debug, print_projection_stats
+from .attenuation import ProjectionModel, transform_voxel_value, validate_projection_model
 
 __all__ = [
     'Volume', 'load_volume_sitk', 'voxel_zyx_to_world_xyz', 'world_xyz_to_voxel_zyx', 'world_xyz_to_image_physical_xyz', 'volume_center_world_xyz',
@@ -17,4 +18,5 @@ __all__ = [
     'BackendStatus', 'backend_statuses', 'resolve_backend',
     'generate_drr', 'generate_orbit_drrs',
     'normalize_image', 'save_png', 'print_volume_debug', 'print_geometry_debug', 'print_projection_stats',
+    'ProjectionModel', 'transform_voxel_value', 'validate_projection_model',
 ]

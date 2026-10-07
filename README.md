@@ -53,6 +53,7 @@ pydrr input.nii.gz \
   --orbit-tilt-x 20 \
   --orbit-tilt-y -10 \
   --detector-roll 5 \
+  --projection-model relative-attenuation \
   --backend auto \
   --invert \
   --output projection.png
@@ -67,6 +68,12 @@ python -m pydrr --help
 Available backends are `auto`, `cpu`, `cuda`, and `mps`. Automatic selection
 prefers CUDA, then Apple Metal, then CPU. CPU multiprocessing uses
 `--n-cores`.
+
+The default `raw` projection model preserves the original qualitative CT-value
+sum. `--projection-model relative-attenuation` maps calibrated CT values to
+water-relative attenuation with `max(0, 1 + HU/1000)` before integration. This
+model is energy independent and does not claim an absolute attenuation
+coefficient.
 
 ## Python API
 
@@ -115,18 +122,27 @@ machine.
 
 Studio opens uploaded volumes in a Slicer-style 2 × 2 viewer with linked axial,
 coronal, and sagittal views plus an orbitable 3D context. The Viewer provides
-physical orientation labels, CT window presets, slice navigation, zoom
-controls, and linked crosshair navigation. Dragging within one slice scrolls
+physical orientation labels, CT window presets, slice navigation, cursor-aware
+zoom, panning, temporary pane maximization, linked crosshair navigation, exact
+world/voxel isocenter entry, and a live crosshair HU readout. Dragging within one slice scrolls
 the other two views while the active image remains fixed. The 3D view can show
 the current images on the active slice planes or render the volume with
 adjustable bone, soft-tissue, and skin presets. Volume rendering uses a bounded
 display copy and does not alter the source image used for DRR generation. The
 linked crosshair is the acquisition isocenter used by the Acquire and Batch
-workspaces. The active slice-plane or volume-rendering appearance, including
+workspaces. Volumes with invalid physical spacing or a non-orthonormal direction
+matrix remain viewable, but acquisition is blocked instead of silently using
+incorrect geometry. The active slice-plane or volume-rendering appearance, including
 manual shift and opacity adjustments, carries into both geometry previews.
 Studio Settings provides persistent system/light/dark appearance choices,
 compute defaults, and a detailed view of the active Python environment and
 available rendering backends.
+
+Acquire provides anatomically correct AP, PA, left-lateral, and right-lateral
+presets, detector orientation labels, exact numeric geometry controls, detector
+coverage metrics, and warnings for source placement or clipping. Every preview
+retains the settings that produced it and is marked stale after controls change.
+The preview supports pan, zoom, fit, and cancellation of an active render.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation

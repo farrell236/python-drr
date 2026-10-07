@@ -1,7 +1,8 @@
-import { ChevronDown, RotateCcw, Share2, Zap } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { AlertTriangle, ChevronDown, RotateCcw, Share2, Square, Zap } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { acquisitionExportUrl } from '../api'
-import type { BackendName, RenderSettings, RuntimeInfo } from '../types'
+import { acquisitionMetrics } from '../acquisitionGeometry'
+import type { BackendName, ProjectionModelName, RenderSettings, RuntimeInfo, VolumeInfo } from '../types'
 import { blankFieldWarning, NumericInput } from './NumericInput'
 
 interface Props {
@@ -9,11 +10,13 @@ interface Props {
   busy: boolean
   onChange: (settings: RenderSettings) => void
   onRender: () => void
+  onCancel: () => void
   onValidationError: (message: string) => void
   onReset: () => void
   volumeFilename: string
   runtime: RuntimeInfo | null
   runtimeError: string | null
+  volume: VolumeInfo
 }
 
 type NumericKey = {
@@ -29,14 +32,19 @@ interface SliderProps {
   step?: number
   unit: string
   onChange: (field: NumericKey, value: number) => void
+  resetKey: number
+  onBlankChange: (fieldId: string, label: string, blank: boolean) => void
 }
 
-function Slider({ label, field, value, min, max, step = 1, unit, onChange }: SliderProps) {
+function Slider({ label, field, value, min, max, step = 1, unit, onChange, resetKey, onBlankChange }: SliderProps) {
   return (
-    <label className="slider-field">
+    <div className="slider-field">
       <span>{label}<output>{value.toFixed(step < 1 ? 2 : 0)} {unit}</output></span>
-      <input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(field, Number(event.target.value))} />
-    </label>
+      <div className="slider-input-row">
+        <input aria-label={`${label} slider`} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(field, Number(event.target.value))} />
+        <NumericInput fieldId={`${String(field)}_exact`} label="Exact" value={value} min={min} max={max} step={step} unit={unit} resetKey={resetKey} onBlankChange={onBlankChange} onChange={(next) => onChange(field, next)} />
+      </div>
+    </div>
   )
 }
 
@@ -44,7 +52,7 @@ function filenameStem(filename: string) {
   return filename.replace(/\.nii(?:\.gz)?$/i, '').replace(/[^a-z0-9._-]+/gi, '_') || 'volume'
 }
 
-export function ParameterPanel({ settings, busy, onChange, onRender, onValidationError, onReset, volumeFilename, runtime, runtimeError }: Props) {
+export function ParameterPanel({ settings, busy, onChange, onRender, onCancel, onValidationError, onReset, volumeFilename, runtime, runtimeError, volume }: Props) {
   const [blankFields, setBlankFields] = useState<Record<string, string>>({})
   const [resetKey, setResetKey] = useState(0)
   const trackBlankField = useCallback((fieldId: string, label: string, blank: boolean) => {
@@ -69,7 +77,8 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onValidatio
   const resolvedLabel = selectedBackend?.label || (settings.backend === 'auto' ? 'detecting backend' : settings.backend.toUpperCase())
   const acceleratorPackages = runtime?.packages.filter((item) => ['torch', 'cupy'].includes(item.distribution) && item.installed) || []
   const selectedBackendReady = settings.backend === 'auto' || selectedBackend?.available === true
-  const renderReady = runtime?.ready === true && selectedBackendReady
+  const metrics = useMemo(() => acquisitionMetrics(volume, settings), [settings, volume])
+  const renderReady = runtime?.ready === true && selectedBackendReady && volume.geometry_valid && !metrics.blockingError
   const render = () => {
     const labels = Object.values(blankFields)
     if (labels.length) {
@@ -94,29 +103,36 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onValidatio
         </div>
       </header>
       <div className="preset-row">
-        <button type="button" className={presetPlane && settings.projection_angle_deg === 0 ? 'active' : ''} onClick={() => preset(0)}>AP</button>
-        <button type="button" className={presetPlane && settings.projection_angle_deg === 180 ? 'active' : ''} onClick={() => preset(180)}>PA</button>
-        <button type="button" className={presetPlane && Math.abs(settings.projection_angle_deg) === 90 ? 'active' : ''} onClick={() => preset(90)}>Lateral</button>
+        <button type="button" className={presetPlane && settings.projection_angle_deg === -90 ? 'active' : ''} onClick={() => preset(-90)}>AP</button>
+        <button type="button" className={presetPlane && settings.projection_angle_deg === 90 ? 'active' : ''} onClick={() => preset(90)}>PA</button>
+        <button type="button" className={presetPlane && Math.abs(settings.projection_angle_deg) === 180 ? 'active' : ''} onClick={() => preset(180)}>Left lat.</button>
+        <button type="button" className={presetPlane && settings.projection_angle_deg === 0 ? 'active' : ''} onClick={() => preset(0)}>Right lat.</button>
       </div>
 
       <details open>
         <summary>Geometry <ChevronDown /></summary>
-        <Slider label="Projection angle" field="projection_angle_deg" value={settings.projection_angle_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} />
-        <Slider label="Orbit tilt X" field="orbit_tilt_x_deg" value={settings.orbit_tilt_x_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} />
-        <Slider label="Orbit tilt Y" field="orbit_tilt_y_deg" value={settings.orbit_tilt_y_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} />
-        <Slider label="Source–isocenter" field="sid_mm" value={settings.sid_mm} min={300} max={2000} step={10} unit="mm" onChange={numeric} />
-        <Slider label="Isocenter–detector" field="idd_mm" value={settings.idd_mm} min={0} max={1500} step={10} unit="mm" onChange={numeric} />
+        <Slider label="Projection angle" field="projection_angle_deg" value={settings.projection_angle_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} resetKey={resetKey} onBlankChange={trackBlankField} />
+        <Slider label="Orbit tilt X" field="orbit_tilt_x_deg" value={settings.orbit_tilt_x_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} resetKey={resetKey} onBlankChange={trackBlankField} />
+        <Slider label="Orbit tilt Y" field="orbit_tilt_y_deg" value={settings.orbit_tilt_y_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} resetKey={resetKey} onBlankChange={trackBlankField} />
+        <Slider label="Source–isocenter" field="sid_mm" value={settings.sid_mm} min={300} max={2000} step={10} unit="mm" onChange={numeric} resetKey={resetKey} onBlankChange={trackBlankField} />
+        <Slider label="Isocenter–detector" field="idd_mm" value={settings.idd_mm} min={0} max={1500} step={10} unit="mm" onChange={numeric} resetKey={resetKey} onBlankChange={trackBlankField} />
         <div className="field-grid">
           <NumericInput fieldId="detector_width_px" label="Detector width" value={settings.detector_width_px} min={16} max={2048} unit="px" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_width_px', value)} />
           <NumericInput fieldId="detector_height_px" label="Detector height" value={settings.detector_height_px} min={16} max={2048} unit="px" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_height_px', value)} />
           <NumericInput fieldId="detector_col_spacing_mm" label="Column spacing" value={settings.detector_col_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_col_spacing_mm', value)} />
           <NumericInput fieldId="detector_row_spacing_mm" label="Row spacing" value={settings.detector_row_spacing_mm} min={0.01} max={20} step={0.01} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_row_spacing_mm', value)} />
         </div>
+        <div className="geometry-metrics">
+          <div><span>SDD</span><b>{metrics.sddMm.toFixed(1)} mm</b></div>
+          <div><span>Magnification</span><b>{metrics.magnification.toFixed(3)}×</b></div>
+          <div><span>FOV at isocenter</span><b>{metrics.fovAtIsocenterMm[0].toFixed(1)} × {metrics.fovAtIsocenterMm[1].toFixed(1)} mm</b></div>
+        </div>
+        {[metrics.blockingError, ...metrics.warnings].filter(Boolean).map((warning) => <div className="geometry-warning" key={warning}><AlertTriangle />{warning}</div>)}
       </details>
 
       <details>
         <summary>Detector alignment <ChevronDown /></summary>
-        <Slider label="Detector roll" field="detector_roll_deg" value={settings.detector_roll_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} />
+        <Slider label="Detector roll" field="detector_roll_deg" value={settings.detector_roll_deg} min={-180} max={180} step={1} unit="°" onChange={numeric} resetKey={resetKey} onBlankChange={trackBlankField} />
         <div className="field-grid">
           <NumericInput fieldId="detector_offset_u_mm" label="Offset U" value={settings.detector_offset_u_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_offset_u_mm', value)} />
           <NumericInput fieldId="detector_offset_v_mm" label="Offset V" value={settings.detector_offset_v_mm} step={0.5} unit="mm" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => numeric('detector_offset_v_mm', value)} />
@@ -134,6 +150,14 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onValidatio
 
       <details>
         <summary>Projection model <ChevronDown /></summary>
+        <label className="select-field">
+          <span>Attenuation model</span>
+          <select value={settings.projection_model} onChange={(event) => patch({ projection_model: event.target.value as ProjectionModelName })}>
+            <option value="raw">Raw CT sum — qualitative</option>
+            <option value="relative_attenuation">HU-relative attenuation</option>
+          </select>
+        </label>
+        <p className="field-note">HU-relative maps each voxel to max(0, 1 + HU/1000). It is water-relative and does not assume a specific X-ray energy.</p>
         <NumericInput fieldId="hu_air_threshold" label="Air threshold" value={settings.hu_air_threshold ?? -900} step={10} unit="HU" resetKey={resetKey} onBlankChange={trackBlankField} onChange={(value) => patch({ hu_air_threshold: value })} />
         <div className="toggle-list">
           <label><span><b>Clamp negative values</b><small>Treat remaining negative values as zero</small></span><input type="checkbox" checked={settings.clamp_negative_to_zero} onChange={(event) => patch({ clamp_negative_to_zero: event.target.checked })} /></label>
@@ -183,8 +207,10 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onValidatio
       </details>
 
       <div className="parameter-footer">
-        <span className={renderReady ? '' : 'not-ready'}><i />{busy ? 'Rendering…' : renderReady ? `${resolvedLabel} ready` : 'Python or device packages required'}</span>
-        <button type="button" className="button primary full" disabled={busy || !renderReady} onClick={render}><Zap /> Render projection</button>
+        <span className={renderReady ? '' : 'not-ready'}><i />{busy ? 'Rendering…' : renderReady ? `${resolvedLabel} ready` : !volume.geometry_valid ? 'Volume geometry is not valid for acquisition' : metrics.blockingError || 'Python or device packages required'}</span>
+        {busy
+          ? <button type="button" className="button secondary full" onClick={onCancel}><Square /> Cancel render</button>
+          : <button type="button" className="button primary full" disabled={!renderReady} onClick={render}><Zap /> Render projection</button>}
       </div>
     </aside>
   )

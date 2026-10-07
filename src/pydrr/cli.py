@@ -54,6 +54,8 @@ def parse_args(argv=None):
                    help="Invert grayscale when saving display-oriented formats like PNG (default: False)")
     p.add_argument("--no-clamp-negative", action="store_true",
                    help="Do not clamp negative intensities to zero above the threshold (default: False)")
+    p.add_argument("--projection-model", choices=["raw", "relative-attenuation"], default="raw",
+                   help="Voxel-to-attenuation model: original qualitative raw sum or water-relative HU attenuation (default: %(default)s)")
     p.add_argument("--p-lo", type=float, default=1.0,
                    help="Lower percentile for PNG-style normalization (default: %(default)s)")
     p.add_argument("--p-hi", type=float, default=99.5,
@@ -194,6 +196,7 @@ def main(argv=None) -> int:
         projector_kwargs={
             "hu_air_threshold": args.threshold,
             "clamp_negative_to_zero": not args.no_clamp_negative,
+            "projection_model": args.projection_model.replace("-", "_"),
         },
         n_cores=args.n_cores,
         mp_chunksize=args.mp_chunksize,
