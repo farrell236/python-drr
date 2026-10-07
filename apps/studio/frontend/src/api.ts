@@ -67,6 +67,15 @@ export function getRuntime(): Promise<RuntimeInfo> {
   return request('/api/runtime', { signal: AbortSignal.timeout(15000) })
 }
 
+export function volumeSliceUrl(volumeId: string, axis: string, index: number, windowCenter: number, windowWidth: number) {
+  const query = new URLSearchParams({
+    index: String(index),
+    window_center: String(windowCenter),
+    window_width: String(windowWidth),
+  })
+  return apiUrl(`/api/volumes/${encodeURIComponent(volumeId)}/slices/${axis}?${query}`)
+}
+
 export async function createRender(settings: RenderSettings): Promise<{ id: string }> {
   return request('/api/renders', {
     method: 'POST',

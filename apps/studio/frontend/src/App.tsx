@@ -7,7 +7,8 @@ import { ParameterPanel } from './components/ParameterPanel'
 import { ProjectionViewer } from './components/ProjectionViewer'
 import { ResultsWorkspace } from './components/ResultsWorkspace'
 import { UploadPanel } from './components/UploadPanel'
-import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, VolumeInfo, Workspace } from './types'
+import { ViewerWorkspace } from './components/ViewerWorkspace'
+import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, VolumeInfo, WindowLevel, Workspace } from './types'
 
 const DEFAULT_SETTINGS: RenderSettings = {
   volume_id: '',
@@ -35,10 +36,17 @@ const DEFAULT_SETTINGS: RenderSettings = {
   cpu_workers: 1,
 }
 
+function defaultWindowLevel(volume: VolumeInfo): WindowLevel {
+  if (volume.intensity_min <= -500 && volume.intensity_max >= 300) return { center: 40, width: 400 }
+  const width = Math.max(1, volume.intensity_max - volume.intensity_min)
+  return { center: volume.intensity_min + width / 2, width }
+}
+
 export default function App() {
-  const [workspace, setWorkspace] = useState<Workspace>('acquire')
+  const [workspace, setWorkspace] = useState<Workspace>('viewer')
   const [volume, setVolume] = useState<VolumeInfo | null>(null)
   const [settings, setSettings] = useState<RenderSettings>(DEFAULT_SETTINGS)
+  const [windowLevel, setWindowLevel] = useState<WindowLevel>({ center: 40, width: 400 })
   const [batchSettings, setBatchSettings] = useState<BatchSettings>({ render: DEFAULT_SETTINGS, start_angle_deg: 0, end_angle_deg: 355, step_deg: 5, shared_normalization: true, include_raw: true })
   const [activeRender, setActiveRender] = useState<JobInfo | null>(null)
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
@@ -88,7 +96,8 @@ export default function App() {
       setActiveRender(null)
       setActiveBatch(null)
       setSavedViews([])
-      setWorkspace('acquire')
+      setWindowLevel(defaultWindowLevel(info))
+      setWorkspace('viewer')
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Could not load the volume')
     } finally {
@@ -148,6 +157,17 @@ export default function App() {
       {volume.orientation_warning && <div className="warning-banner"><AlertTriangle /> <span>{volume.orientation_warning}</span></div>}
       {error && <div className="global-error" role="alert"><AlertTriangle />{error}<button type="button" onClick={() => setError(null)}>Dismiss</button></div>}
 
+      {workspace === 'viewer' && (
+        <ViewerWorkspace
+          volume={volume}
+          settings={activeSettings}
+          windowLevel={windowLevel}
+          onWindowLevelChange={setWindowLevel}
+          onIsocenterChange={([x, y, z]) => setSettings((current) => ({ ...current, translate_x_mm: x, translate_y_mm: y, translate_z_mm: z }))}
+          onOpenAcquire={() => setWorkspace('acquire')}
+        />
+      )}
+
       {workspace === 'acquire' && (
         <main className="workbench">
           <div className="workbench-canvas">
@@ -178,8 +198,9 @@ export default function App() {
 function AppHeader({ workspace, onWorkspace, resultCount, volume, onReplace }: { workspace: Workspace; onWorkspace: (workspace: Workspace) => void; resultCount: number; volume?: VolumeInfo; onReplace?: () => void }) {
   return (
     <header className="app-header">
-      <div className="brand"><span><ScanLine /></span><div><b>PyDRR Studio</b><small>{volume ? `${volume.filename} · ${volume.shape_zyx.join(' × ')}` : 'Interactive DRR acquisition'}</small></div></div>
+      <div className="brand"><span><ScanLine /></span><div><b>PyDRR Studio</b><small>{volume ? `${volume.filename} · ${volume.shape_zyx[2]} × ${volume.shape_zyx[1]} × ${volume.shape_zyx[0]}` : 'Interactive DRR acquisition'}</small></div></div>
       <nav aria-label="Workspace">
+        <button type="button" className={workspace === 'viewer' ? 'active' : ''} onClick={() => onWorkspace('viewer')}><ScanLine /> Viewer</button>
         <button type="button" className={workspace === 'acquire' ? 'active' : ''} onClick={() => onWorkspace('acquire')}><Zap /> Acquire</button>
         <button type="button" className={workspace === 'batch' ? 'active' : ''} onClick={() => onWorkspace('batch')}><Orbit /> Batch</button>
         <button type="button" className={workspace === 'results' ? 'active' : ''} onClick={() => onWorkspace('results')}><Layers3 /> Results {resultCount > 0 && <i>{resultCount}</i>}</button>

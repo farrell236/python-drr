@@ -1,5 +1,12 @@
-export type Workspace = 'acquire' | 'batch' | 'results'
+export type Workspace = 'viewer' | 'acquire' | 'batch' | 'results'
 export type BackendName = 'auto' | 'cpu' | 'cuda' | 'mps'
+export type SliceAxis = 'axial' | 'coronal' | 'sagittal'
+export type VoxelZYX = [number, number, number]
+
+export interface WindowLevel {
+  center: number
+  width: number
+}
 
 export interface VolumeInfo {
   id: string

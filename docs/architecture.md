@@ -36,8 +36,12 @@ Rendering backends live under `pydrr.backends`:
 
 The `studio` installation extra adds FastAPI, Uvicorn, and multipart upload
 support. The Studio package owns the loopback API, local uploads, background
-jobs, result archives, and runtime diagnostics. It depends on `pydrr` for all
-geometry, backend discovery, and rendering behavior.
+jobs, windowed multiplanar slice responses, result archives, and runtime
+diagnostics. It depends on `pydrr` for all geometry, backend discovery, and
+rendering behavior. Viewer crosshairs are converted between voxel ZYX and
+physical world XYZ coordinates with the uploaded volume's spacing, origin, and
+direction matrix; the resulting world offset is passed directly to the core
+acquisition geometry.
 
 The React/vtk.js source is maintained in `apps/studio/frontend`. Its production
 build is generated under `pydrr_studio/static` and included in Python wheels.

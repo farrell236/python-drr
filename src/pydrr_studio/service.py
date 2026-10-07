@@ -35,6 +35,22 @@ def _safe_filename(name: str) -> str:
     return cleaned or "volume.nii.gz"
 
 
+def normalize_slice(
+    image: np.ndarray,
+    *,
+    window_center: float | None = None,
+    window_width: float | None = None,
+) -> np.ndarray:
+    """Normalize one volume slice for diagnostic display."""
+    if window_center is None or window_width is None:
+        return normalize_image(image, invert=False, p_lo=1.0, p_hi=99.0)
+    if window_width <= 0.0:
+        raise ValueError("window_width must be greater than zero")
+    low = float(window_center) - float(window_width) / 2.0
+    high = float(window_center) + float(window_width) / 2.0
+    return np.clip((image.astype(np.float32) - low) / (high - low), 0.0, 1.0)
+
+
 def build_geometry(vol: Volume, settings: RenderSettings) -> tuple[DRRGeometry, np.ndarray]:
     iso_center = volume_center_world_xyz(vol) + np.array(
         [settings.translate_x_mm, settings.translate_y_mm, settings.translate_z_mm],
@@ -211,7 +227,15 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
 '''
         return script_filename, script
 
-    def slice_png(self, volume_id: str, axis: str, index: int | None) -> bytes:
+    def slice_png(
+        self,
+        volume_id: str,
+        axis: str,
+        index: int | None,
+        *,
+        window_center: float | None = None,
+        window_width: float | None = None,
+    ) -> bytes:
         volume = self.get_volume(volume_id).volume
         axis_index = {"axial": 0, "coronal": 1, "sagittal": 2}.get(axis)
         if axis_index is None:
@@ -224,7 +248,11 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
             image = volume.data[:, selected, :]
         else:
             image = volume.data[:, :, selected]
-        normalized = normalize_image(image, invert=False, p_lo=1.0, p_hi=99.0)
+        normalized = normalize_slice(
+            image,
+            window_center=window_center,
+            window_width=window_width,
+        )
         output = imageio.imwrite("<bytes>", np.flipud(normalized * 255).astype(np.uint8), format="png")
         return output
 

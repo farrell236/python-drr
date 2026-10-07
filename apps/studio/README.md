@@ -29,6 +29,20 @@ images and generated projections stay local.
 The distribution is named `python-drr`; its Python import remains `pydrr`, and
 the installed commands are `pydrr` and `pydrr-studio`.
 
+## Workspaces
+
+- **Viewer** displays linked axial, coronal, and sagittal slices with physical
+  orientation labels, CT window presets, slice navigation, pan, zoom, and
+  reset controls. Clicking a slice positions the shared acquisition isocenter.
+- **Acquire** configures and renders a single projection from that isocenter.
+- **Batch** previews and executes an angle sweep with the active geometry.
+- **Results** lists completed projections and downloadable archives from the
+  current local session.
+
+The Viewer converts between voxel indices and physical world coordinates using
+the NIfTI spacing, origin, and direction matrix. Its isocenter therefore uses
+the same coordinate convention as the core projector.
+
 ## Compute environment
 
 Studio uses the Python environment that launches `pydrr-studio`. Its

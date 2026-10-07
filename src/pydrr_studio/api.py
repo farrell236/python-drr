@@ -68,9 +68,21 @@ def upload_volume(file: UploadFile = File(...)) -> VolumeInfo:
 
 
 @app.get("/api/volumes/{volume_id}/slices/{axis}")
-def volume_slice(volume_id: str, axis: str, index: int | None = None) -> Response:
+def volume_slice(
+    volume_id: str,
+    axis: str,
+    index: int | None = None,
+    window_center: float | None = None,
+    window_width: float | None = Query(None, gt=0.0),
+) -> Response:
     try:
-        content = service.slice_png(volume_id, axis, index)
+        content = service.slice_png(
+            volume_id,
+            axis,
+            index,
+            window_center=window_center,
+            window_width=window_width,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Volume not found") from exc
     except ValueError as exc:
