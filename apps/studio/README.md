@@ -43,7 +43,10 @@ the installed commands are `pydrr` and `pydrr-studio`.
   narrow displays. Clicking or dragging within a slice moves the shared
   crosshair through the other two views while the dragged image stays fixed.
 - **Acquire** configures and renders a single projection from that isocenter.
-- **Batch** previews and executes an angle sweep with the active geometry.
+  Its geometry view carries over the active slice planes or volume preset,
+  including the current intensity shift and opacity.
+- **Batch** previews and executes an angle sweep with the active geometry and
+  the same patient rendering selected in Viewer.
 - **Results** lists completed projections and downloadable archives from the
   current local session.
 

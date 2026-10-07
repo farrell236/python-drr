@@ -3,6 +3,17 @@ export type BackendName = 'auto' | 'cpu' | 'cuda' | 'mps'
 export type SliceAxis = 'axial' | 'coronal' | 'sagittal'
 export type VoxelZYX = [number, number, number]
 export type VolumeRenderMode = 'slices' | 'bone' | 'soft-tissue' | 'skin'
+export type AdjustableVolumeRenderMode = Exclude<VolumeRenderMode, 'slices'>
+
+export interface VolumeRenderControl {
+  shift: number
+  opacity: number
+}
+
+export interface VolumeRenderState {
+  mode: VolumeRenderMode
+  controls: Record<AdjustableVolumeRenderMode, VolumeRenderControl>
+}
 
 export interface VolumeRenderSettings {
   mode: VolumeRenderMode

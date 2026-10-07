@@ -2,15 +2,18 @@ import { Crosshair, LocateFixed, RotateCcw, ScanLine, ZoomIn, ZoomOut } from 'lu
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import { volumeSliceUrl } from '../api'
-import type { RenderSettings, SliceAxis, VolumeInfo, VolumeRenderMode, VolumeRenderSettings, VoxelZYX, WindowLevel } from '../types'
+import type { AdjustableVolumeRenderMode, RenderSettings, SliceAxis, VolumeInfo, VolumeRenderState, VoxelZYX, WindowLevel } from '../types'
 import { clampVoxel, orientationLabels, planeGeometry, planePointToVoxel, voxelToPlanePoint, voxelToWorld, worldToVoxel } from '../viewerGeometry'
+import { activeVolumeRenderSettings, DEFAULT_RENDER_CONTROLS, VOLUME_RENDER_OPTIONS } from '../volumeRendering'
 import { Volume3DViewport } from './Volume3DViewport'
 
 interface ViewerProps {
   volume: VolumeInfo
   settings: RenderSettings
   windowLevel: WindowLevel
+  volumeRenderState: VolumeRenderState
   onWindowLevelChange: (windowLevel: WindowLevel) => void
+  onVolumeRenderStateChange: (state: VolumeRenderState) => void
   onIsocenterChange: (translationXYZ: [number, number, number]) => void
   onOpenAcquire: () => void
 }
@@ -27,21 +30,6 @@ const AXIS_NAMES: Record<SliceAxis, string> = {
   axial: 'Axial',
   coronal: 'Coronal',
   sagittal: 'Sagittal',
-}
-
-type AdjustableRenderMode = Exclude<VolumeRenderMode, 'slices'>
-
-const VOLUME_RENDER_OPTIONS: Array<{ mode: VolumeRenderMode; label: string }> = [
-  { mode: 'slices', label: 'Slices' },
-  { mode: 'bone', label: 'Bone' },
-  { mode: 'soft-tissue', label: 'Soft tissue' },
-  { mode: 'skin', label: 'Skin' },
-]
-
-const DEFAULT_RENDER_CONTROLS: Record<AdjustableRenderMode, { shift: number; opacity: number }> = {
-  bone: { shift: 0, opacity: 1 },
-  'soft-tissue': { shift: 0, opacity: 1 },
-  skin: { shift: 0, opacity: 1 },
 }
 
 function rounded(value: number, digits = 2) {
@@ -155,9 +143,7 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
   )
 }
 
-export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelChange, onIsocenterChange, onOpenAcquire }: ViewerProps) {
-  const [volumeRenderMode, setVolumeRenderMode] = useState<VolumeRenderMode>('slices')
-  const [volumeRenderControls, setVolumeRenderControls] = useState(DEFAULT_RENDER_CONTROLS)
+export function ViewerWorkspace({ volume, settings, windowLevel, volumeRenderState, onWindowLevelChange, onVolumeRenderStateChange, onIsocenterChange, onOpenAcquire }: ViewerProps) {
   const isocenterWorld = useMemo<[number, number, number]>(() => [
     volume.center_world_xyz_mm[0] + settings.translate_x_mm,
     volume.center_world_xyz_mm[1] + settings.translate_y_mm,
@@ -172,31 +158,30 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
     { name: 'Bone', center: 500, width: 2000 },
     { name: 'Full', center: (volume.intensity_min + volume.intensity_max) / 2, width: intensityRange },
   ]
-  const adjustableRenderMode = volumeRenderMode === 'slices' ? null : volumeRenderMode
-  const volumeRendering: VolumeRenderSettings = adjustableRenderMode
-    ? { mode: adjustableRenderMode, ...volumeRenderControls[adjustableRenderMode] }
-    : { mode: 'slices', shift: 0, opacity: 1 }
+  const adjustableRenderMode: AdjustableVolumeRenderMode | null = volumeRenderState.mode === 'slices' ? null : volumeRenderState.mode
+  const volumeRendering = activeVolumeRenderSettings(volumeRenderState)
   const shiftLimit = Math.max(500, Math.min(3000, Math.ceil(intensityRange / 2 / 100) * 100))
-
-  useEffect(() => {
-    setVolumeRenderMode('slices')
-    setVolumeRenderControls(DEFAULT_RENDER_CONTROLS)
-  }, [volume.id])
 
   const setVolumeRenderControl = (field: 'shift' | 'opacity', value: number) => {
     if (!adjustableRenderMode) return
-    setVolumeRenderControls((current) => ({
-      ...current,
-      [adjustableRenderMode]: { ...current[adjustableRenderMode], [field]: value },
-    }))
+    onVolumeRenderStateChange({
+      ...volumeRenderState,
+      controls: {
+        ...volumeRenderState.controls,
+        [adjustableRenderMode]: { ...volumeRenderState.controls[adjustableRenderMode], [field]: value },
+      },
+    })
   }
 
   const resetVolumeRenderControls = () => {
     if (!adjustableRenderMode) return
-    setVolumeRenderControls((current) => ({
-      ...current,
-      [adjustableRenderMode]: DEFAULT_RENDER_CONTROLS[adjustableRenderMode],
-    }))
+    onVolumeRenderStateChange({
+      ...volumeRenderState,
+      controls: {
+        ...volumeRenderState.controls,
+        [adjustableRenderMode]: { ...DEFAULT_RENDER_CONTROLS[adjustableRenderMode] },
+      },
+    })
   }
 
   const setVoxel = (nextVoxel: VoxelZYX) => {
@@ -257,10 +242,10 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
             {VOLUME_RENDER_OPTIONS.map((option) => (
               <button
                 type="button"
-                className={volumeRenderMode === option.mode ? 'active' : ''}
+                className={volumeRenderState.mode === option.mode ? 'active' : ''}
                 key={option.mode}
-                aria-pressed={volumeRenderMode === option.mode}
-                onClick={() => setVolumeRenderMode(option.mode)}
+                aria-pressed={volumeRenderState.mode === option.mode}
+                onClick={() => onVolumeRenderStateChange({ ...volumeRenderState, mode: option.mode })}
               >
                 {option.label}
               </button>
@@ -269,26 +254,26 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
           {adjustableRenderMode ? (
             <>
               <label className="viewer-slider">
-                <span>Intensity shift <output>{volumeRenderControls[adjustableRenderMode].shift > 0 ? '+' : ''}{volumeRenderControls[adjustableRenderMode].shift} HU</output></span>
+                <span>Intensity shift <output>{volumeRenderState.controls[adjustableRenderMode].shift > 0 ? '+' : ''}{volumeRenderState.controls[adjustableRenderMode].shift} HU</output></span>
                 <input
                   aria-label="Volume rendering intensity shift"
                   type="range"
                   min={-shiftLimit}
                   max={shiftLimit}
                   step={10}
-                  value={volumeRenderControls[adjustableRenderMode].shift}
+                  value={volumeRenderState.controls[adjustableRenderMode].shift}
                   onChange={(event) => setVolumeRenderControl('shift', Number(event.target.value))}
                 />
               </label>
               <label className="viewer-slider">
-                <span>Opacity <output>{Math.round(volumeRenderControls[adjustableRenderMode].opacity * 100)}%</output></span>
+                <span>Opacity <output>{Math.round(volumeRenderState.controls[adjustableRenderMode].opacity * 100)}%</output></span>
                 <input
                   aria-label="Volume rendering opacity"
                   type="range"
                   min={0.1}
                   max={2}
                   step={0.05}
-                  value={volumeRenderControls[adjustableRenderMode].opacity}
+                  value={volumeRenderState.controls[adjustableRenderMode].opacity}
                   onChange={(event) => setVolumeRenderControl('opacity', Number(event.target.value))}
                 />
               </label>

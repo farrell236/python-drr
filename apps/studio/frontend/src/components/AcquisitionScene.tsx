@@ -1,13 +1,24 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import '@kitware/vtk.js/Rendering/Profiles/Geometry'
+import '@kitware/vtk.js/Rendering/Profiles/Volume'
+// @ts-expect-error vtk.js exposes a runtime default that is missing from its declaration file.
+import vtkImageHelper from '@kitware/vtk.js/Common/Core/ImageHelper'
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray'
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData'
 import vtkPoints from '@kitware/vtk.js/Common/Core/Points'
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData'
+import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction'
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor'
 import vtkAxesActor from '@kitware/vtk.js/Rendering/Core/AxesActor'
+import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction'
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper'
 import vtkPixelSpaceCallbackMapper from '@kitware/vtk.js/Rendering/Core/PixelSpaceCallbackMapper'
+import vtkTexture from '@kitware/vtk.js/Rendering/Core/Texture'
+import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume'
+import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper'
 import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource'
 import vtkLineSource from '@kitware/vtk.js/Filters/Sources/LineSource'
+import vtkPlaneSource from '@kitware/vtk.js/Filters/Sources/PlaneSource'
 import vtkRegularPolygonSource from '@kitware/vtk.js/Filters/Sources/RegularPolygonSource'
 import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource'
 import vtkGenericRenderWindow from '@kitware/vtk.js/Rendering/Misc/GenericRenderWindow'
@@ -16,17 +27,23 @@ import vtkMouseCameraTrackballRotateManipulator from '@kitware/vtk.js/Interactio
 import vtkMouseCameraTrackballZoomManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballZoomManipulator'
 import vtkGestureCameraManipulator from '@kitware/vtk.js/Interaction/Manipulators/GestureCameraManipulator'
 import { RotateCcw } from 'lucide-react'
-import type { RenderSettings, VolumeInfo } from '../types'
+import { getVolumeRenderData, volumeSliceUrl } from '../api'
+import type { RenderSettings, VolumeInfo, VolumeRenderSettings, WindowLevel } from '../types'
+import { clampVoxel, worldToVoxel } from '../viewerGeometry'
+import { directedPoint, directionMatrix, imageDirection, TRANSFER_PRESETS, volumeRenderLabel } from '../volumeRendering'
 
 interface Props {
   volume: VolumeInfo
   settings: RenderSettings
+  windowLevel: WindowLevel
+  rendering: VolumeRenderSettings
   compact?: boolean
   showOrbit?: boolean
   orbitSampleAngles?: readonly number[]
 }
 
 const EMPTY_ORBIT_SAMPLE_ANGLES: readonly number[] = []
+type VolumeLoadState = 'idle' | 'loading' | 'ready' | 'error'
 
 function tiltOrbitVector(vector: [number, number, number], tiltXDeg: number, tiltYDeg: number): [number, number, number] {
   const [x, y, z] = vector
@@ -57,11 +74,18 @@ function addActor(renderer: ReturnType<ReturnType<typeof vtkGenericRenderWindow.
   return actor
 }
 
-export function AcquisitionScene({ volume, settings, compact = false, showOrbit = false, orbitSampleAngles = EMPTY_ORBIT_SAMPLE_ANGLES }: Props) {
+export function AcquisitionScene({ volume, settings, windowLevel, rendering, compact = false, showOrbit = false, orbitSampleAngles = EMPTY_ORBIT_SAMPLE_ANGLES }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const markerOverlayRef = useRef<HTMLDivElement>(null)
   const resetCameraRef = useRef<() => void>(() => undefined)
   const updateGeometryRef = useRef<(next: RenderSettings) => void>(() => undefined)
+  const updatePatientSlicesRef = useRef<(next: RenderSettings, nextWindowLevel: WindowLevel) => void>(() => undefined)
+  const updatePatientRenderingRef = useRef<(next: VolumeRenderSettings) => void>(() => undefined)
+  const loadVolumeRef = useRef<() => Promise<void>>(async () => undefined)
+  const renderingRef = useRef(rendering)
+  const [loadState, setLoadState] = useState<VolumeLoadState>('idle')
+  const [loadError, setLoadError] = useState('')
+  renderingRef.current = rendering
   const displayedSampleAngles = useMemo(() => {
     const markerStride = Math.max(1, Math.ceil(orbitSampleAngles.length / 140))
     return orbitSampleAngles.filter((_, index) => index % markerStride === 0 || index === orbitSampleAngles.length - 1)
@@ -69,6 +93,12 @@ export function AcquisitionScene({ volume, settings, compact = false, showOrbit 
 
   useEffect(() => {
     if (!containerRef.current) return
+    setLoadState('idle')
+    setLoadError('')
+    let disposed = false
+    let volumeReady = false
+    let localLoadState: VolumeLoadState = 'idle'
+    const abortController = new AbortController()
     const genericWindow = vtkGenericRenderWindow.newInstance({ background: [0.76, 0.84, 0.9] })
     genericWindow.setContainer(containerRef.current)
     const renderer = genericWindow.getRenderer()
@@ -86,22 +116,161 @@ export function AcquisitionScene({ volume, settings, compact = false, showOrbit 
 
     const [nz, ny, nx] = volume.shape_zyx
     const [sz, sy, sx] = volume.spacing_zyx_mm
-    const sizeX = nx * sx
-    const sizeY = ny * sy
-    const sizeZ = nz * sz
+    const sizeX = Math.max(sx, (nx - 1) * sx)
+    const sizeY = Math.max(sy, (ny - 1) * sy)
+    const sizeZ = Math.max(sz, (nz - 1) * sz)
     const axesLength = Math.max(100, Math.min(150, Math.max(sizeX, sizeY, sizeZ) * 0.24))
 
-    const volumeSource = vtkCubeSource.newInstance({ xLength: sizeX, yLength: sizeY, zLength: sizeZ })
-    const volumeActor = addActor(renderer, volumeSource, [0.1, 0.34, 0.58], 0.16)
-    volumeActor.getProperty().setRepresentationToWireframe()
-    volumeActor.getProperty().setLineWidth(1)
-    const direction = volume.direction
-    volumeActor.setUserMatrix([
-      direction[0][0], direction[1][0], direction[2][0], 0,
-      direction[0][1], direction[1][1], direction[2][1], 0,
-      direction[0][2], direction[1][2], direction[2][2], 0,
-      0, 0, 0, 1,
-    ] as never)
+    const transform = directionMatrix(volume.direction)
+    const boundsSource = vtkCubeSource.newInstance({ xLength: sizeX, yLength: sizeY, zLength: sizeZ })
+    const boundsActor = addActor(renderer, boundsSource, [0.1, 0.34, 0.58], 0.16)
+    boundsActor.getProperty().setRepresentationToWireframe()
+    boundsActor.getProperty().setLineWidth(1)
+    boundsActor.setUserMatrix(transform)
+
+    const axialSource = vtkPlaneSource.newInstance({ xResolution: 1, yResolution: 1 })
+    const coronalSource = vtkPlaneSource.newInstance({ xResolution: 1, yResolution: 1 })
+    const sagittalSource = vtkPlaneSource.newInstance({ xResolution: 1, yResolution: 1 })
+    const planeActors = [
+      addActor(renderer, axialSource, [1, 1, 1]),
+      addActor(renderer, coronalSource, [1, 1, 1]),
+      addActor(renderer, sagittalSource, [1, 1, 1]),
+    ]
+    planeActors.forEach((actor) => {
+      actor.setUserMatrix(transform)
+      actor.getProperty().setEdgeVisibility(true)
+      actor.getProperty().setLineWidth(1.2)
+      actor.getProperty().setLighting(false)
+      actor.setForceOpaque(true)
+    })
+    planeActors[0].getProperty().setEdgeColor(0.94, 0.28, 0.31)
+    planeActors[1].getProperty().setEdgeColor(0.29, 0.78, 0.47)
+    planeActors[2].getProperty().setEdgeColor(0.96, 0.77, 0.22)
+    const planeTextures = planeActors.map(() => vtkTexture.newInstance({ interpolate: true, edgeClamp: true }))
+
+    const patientVolumeMapper = vtkVolumeMapper.newInstance()
+    patientVolumeMapper.setAutoAdjustSampleDistances(true)
+    patientVolumeMapper.setInteractionSampleDistanceFactor(1.7)
+    const patientVolumeActor = vtkVolume.newInstance()
+    patientVolumeActor.setMapper(patientVolumeMapper)
+    patientVolumeActor.setVisibility(false)
+    const colorTransfer = vtkColorTransferFunction.newInstance()
+    const opacityTransfer = vtkPiecewiseFunction.newInstance()
+    const volumeProperty = patientVolumeActor.getProperty()
+    volumeProperty.setRGBTransferFunction(0, colorTransfer)
+    volumeProperty.setScalarOpacity(0, opacityTransfer)
+    volumeProperty.setInterpolationTypeToLinear()
+    volumeProperty.setShade(true)
+    volumeProperty.setAmbient(0.32)
+    volumeProperty.setDiffuse(0.72)
+    volumeProperty.setSpecular(0.15)
+    volumeProperty.setSpecularPower(12)
+    renderer.addVolume(patientVolumeActor)
+
+    const applyPatientRendering = (next: VolumeRenderSettings) => {
+      const showSlices = next.mode === 'slices' || (localLoadState === 'error' && !volumeReady)
+      planeActors.forEach((actor) => actor.setVisibility(showSlices))
+      patientVolumeActor.setVisibility(!showSlices && volumeReady)
+      if (next.mode !== 'slices') {
+        const preset = TRANSFER_PRESETS[next.mode]
+        colorTransfer.removeAllPoints()
+        preset.colors.forEach(([value, red, green, blue]) => colorTransfer.addRGBPoint(value + next.shift, red, green, blue))
+        opacityTransfer.removeAllPoints()
+        preset.opacities.forEach(([value, opacity]) => opacityTransfer.addPoint(value + next.shift, Math.min(1, opacity * next.opacity)))
+      }
+      renderer.resetCameraClippingRange()
+      renderWindow.render()
+    }
+    updatePatientRenderingRef.current = applyPatientRendering
+
+    const loadVolume = async () => {
+      if (localLoadState === 'loading' || localLoadState === 'ready') return
+      localLoadState = 'loading'
+      setLoadState('loading')
+      setLoadError('')
+      try {
+        const renderData = await getVolumeRenderData(volume.id, abortController.signal)
+        if (disposed) return
+        const [dataX, dataY, dataZ] = renderData.dimensionsXYZ
+        const [spacingX, spacingY, spacingZ] = renderData.spacingXYZ
+        const imageData = vtkImageData.newInstance()
+        imageData.setDimensions(dataX, dataY, dataZ)
+        imageData.setSpacing([spacingX, spacingY, spacingZ])
+        imageData.setDirection(imageDirection(volume.direction))
+        imageData.setOrigin(directedPoint(volume.direction, [
+          -((dataX - 1) * spacingX) / 2,
+          -((dataY - 1) * spacingY) / 2,
+          -((dataZ - 1) * spacingZ) / 2,
+        ]))
+        imageData.getPointData().setScalars(vtkDataArray.newInstance({
+          name: 'CT intensity',
+          numberOfComponents: 1,
+          values: renderData.values,
+        }))
+        patientVolumeMapper.setInputData(imageData)
+        patientVolumeMapper.setSampleDistance(Math.max(0.35, Math.min(spacingX, spacingY, spacingZ) * 0.7))
+        volumeProperty.setScalarOpacityUnitDistance(0, Math.max(spacingX, spacingY, spacingZ))
+        volumeReady = true
+        localLoadState = 'ready'
+        setLoadState('ready')
+        applyPatientRendering(renderingRef.current)
+      } catch (error) {
+        if (disposed || (error instanceof DOMException && error.name === 'AbortError')) return
+        localLoadState = 'error'
+        setLoadState('error')
+        setLoadError(error instanceof Error ? error.message : 'Could not prepare this volume for 3D rendering.')
+        applyPatientRendering(renderingRef.current)
+      }
+    }
+    loadVolumeRef.current = loadVolume
+
+    const textureUrls = ['', '', '']
+    const textureRevisions = [0, 0, 0]
+    const updatePatientSlices = (next: RenderSettings, nextWindowLevel: WindowLevel) => {
+      const isocenterWorld: [number, number, number] = [
+        volume.center_world_xyz_mm[0] + next.translate_x_mm,
+        volume.center_world_xyz_mm[1] + next.translate_y_mm,
+        volume.center_world_xyz_mm[2] + next.translate_z_mm,
+      ]
+      const voxel = clampVoxel(volume, worldToVoxel(volume, isocenterWorld))
+      const x = (voxel[2] - (nx - 1) / 2) * sx
+      const y = (voxel[1] - (ny - 1) / 2) * sy
+      const z = (voxel[0] - (nz - 1) / 2) * sz
+
+      axialSource.setOrigin(-sizeX / 2, -sizeY / 2, z)
+      axialSource.setPoint1(sizeX / 2, -sizeY / 2, z)
+      axialSource.setPoint2(-sizeX / 2, sizeY / 2, z)
+      coronalSource.setOrigin(-sizeX / 2, y, -sizeZ / 2)
+      coronalSource.setPoint1(sizeX / 2, y, -sizeZ / 2)
+      coronalSource.setPoint2(-sizeX / 2, y, sizeZ / 2)
+      sagittalSource.setOrigin(x, -sizeY / 2, -sizeZ / 2)
+      sagittalSource.setPoint1(x, sizeY / 2, -sizeZ / 2)
+      sagittalSource.setPoint2(x, -sizeY / 2, sizeZ / 2)
+
+      const indices = [Math.round(voxel[0]), Math.round(voxel[1]), Math.round(voxel[2])]
+      ;(['axial', 'coronal', 'sagittal'] as const).forEach((axis, axisIndex) => {
+        const url = volumeSliceUrl(volume.id, axis, indices[axisIndex], nextWindowLevel.center, nextWindowLevel.width)
+        if (url === textureUrls[axisIndex]) return
+        textureUrls[axisIndex] = url
+        textureRevisions[axisIndex] += 1
+        const revision = textureRevisions[axisIndex]
+        const image = new Image()
+        image.decoding = 'async'
+        image.onload = () => {
+          if (disposed || revision !== textureRevisions[axisIndex]) return
+          const texture = planeTextures[axisIndex]
+          texture.setInputData(vtkImageHelper.imageToImageData(image))
+          if (!planeActors[axisIndex].hasTexture(texture)) planeActors[axisIndex].addTexture(texture)
+          renderWindow.render()
+        }
+        image.src = url
+      })
+      renderer.resetCameraClippingRange()
+      renderWindow.render()
+    }
+    updatePatientSlicesRef.current = updatePatientSlices
+    updatePatientSlices(settings, windowLevel)
+    applyPatientRendering(renderingRef.current)
 
     const sourceSphere = vtkSphereSource.newInstance({ radius: Math.max(18, Math.min(42, sizeX * 0.08)), thetaResolution: 24, phiResolution: 16 })
     const sourceActor = addActor(renderer, sourceSphere, [1, 0.48, 0.14])
@@ -287,9 +456,14 @@ export function AcquisitionScene({ volume, settings, compact = false, showOrbit 
     observer.observe(containerRef.current)
     genericWindow.resize()
     return () => {
+      disposed = true
+      abortController.abort()
       observer.disconnect()
       resetCameraRef.current = () => undefined
       updateGeometryRef.current = () => undefined
+      updatePatientSlicesRef.current = () => undefined
+      updatePatientRenderingRef.current = () => undefined
+      loadVolumeRef.current = async () => undefined
       interactionStyle.delete()
       genericWindow.delete()
     }
@@ -299,13 +473,22 @@ export function AcquisitionScene({ volume, settings, compact = false, showOrbit 
     updateGeometryRef.current(settings)
   }, [settings])
 
+  useEffect(() => {
+    updatePatientSlicesRef.current(settings, windowLevel)
+  }, [settings, windowLevel])
+
+  useEffect(() => {
+    updatePatientRenderingRef.current(rendering)
+    if (rendering.mode !== 'slices') void loadVolumeRef.current()
+  }, [rendering, volume.id])
+
   const resetScene = () => {
     resetCameraRef.current()
   }
 
   return (
     <div className="scene-shell">
-      <div ref={containerRef} className="vtk-scene" aria-label="Interactive three-dimensional acquisition geometry" />
+      <div ref={containerRef} className="vtk-scene" aria-label={`Interactive three-dimensional acquisition geometry with ${volumeRenderLabel(rendering).toLowerCase()}`} />
       <div ref={markerOverlayRef} className="orbit-marker-overlay" aria-hidden="true">
         {showOrbit && displayedSampleAngles.map((angle, index) => <i className="orbit-direction-marker" key={`${angle}-${index}`} />)}
         <span className="isocenter-axis-label axis-x">X</span>
@@ -314,6 +497,12 @@ export function AcquisitionScene({ volume, settings, compact = false, showOrbit 
       </div>
       <div className="scene-label source-label">Source</div>
       <div className="scene-label detector-label">Detector</div>
+      {rendering.mode !== 'slices' && loadState === 'loading' && (
+        <div className="scene-volume-status"><span className="spinner" />Preparing {volumeRenderLabel(rendering).toLowerCase()}…</div>
+      )}
+      {rendering.mode !== 'slices' && loadState === 'error' && (
+        <div className="scene-volume-status error-message">{loadError}</div>
+      )}
       <div className="scene-toolbar" role="toolbar" aria-label="Acquisition geometry camera controls">
         <button type="button" onClick={resetScene} title="Reset to the default three-quarter view">
           <RotateCcw aria-hidden="true" />

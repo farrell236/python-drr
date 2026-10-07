@@ -120,7 +120,8 @@ the current images on the active slice planes or render the volume with
 adjustable bone, soft-tissue, and skin presets. Volume rendering uses a bounded
 display copy and does not alter the source image used for DRR generation. The
 linked crosshair is the acquisition isocenter used by the Acquire and Batch
-workspaces.
+workspaces. The active slice-plane or volume-rendering appearance, including
+manual shift and opacity adjustments, carries into both geometry previews.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation

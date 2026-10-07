@@ -84,7 +84,12 @@ function parseNumberTuple(value: string | null, label: string): [number, number,
   return parsed as [number, number, number]
 }
 
+const volumeRenderDataCache = new Map<string, VolumeRenderData>()
+
 export async function getVolumeRenderData(volumeId: string, signal?: AbortSignal): Promise<VolumeRenderData> {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const cached = volumeRenderDataCache.get(volumeId)
+  if (cached) return cached
   let response: Response
   try {
     response = await fetch(apiUrl(`/api/volumes/${encodeURIComponent(volumeId)}/render-data`), { signal })
@@ -103,7 +108,13 @@ export async function getVolumeRenderData(volumeId: string, signal?: AbortSignal
   if (buffer.byteLength !== expectedBytes) {
     throw new Error('The local PyDRR service returned incomplete volume rendering data.')
   }
-  return { values: new Float32Array(buffer), dimensionsXYZ, spacingXYZ }
+  const renderData = { values: new Float32Array(buffer), dimensionsXYZ, spacingXYZ }
+  volumeRenderDataCache.set(volumeId, renderData)
+  if (volumeRenderDataCache.size > 2) {
+    const oldestKey = volumeRenderDataCache.keys().next().value
+    if (typeof oldestKey === 'string') volumeRenderDataCache.delete(oldestKey)
+  }
+  return renderData
 }
 
 export async function createRender(settings: RenderSettings): Promise<{ id: string }> {

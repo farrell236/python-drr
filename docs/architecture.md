@@ -41,7 +41,9 @@ diagnostics. It depends on `pydrr` for all geometry, backend discovery, and
 rendering behavior. Viewer crosshairs are converted between voxel ZYX and
 physical world XYZ coordinates with the uploaded volume's spacing, origin, and
 direction matrix; the resulting world offset is passed directly to the core
-acquisition geometry.
+acquisition geometry. Viewer volume-rendering state is owned by the application
+so its slice planes, transfer-function preset, shift, and opacity remain
+consistent in the Acquire and Batch geometry scenes.
 
 The React/vtk.js source is maintained in `apps/studio/frontend`. Its production
 build is generated under `pydrr_studio/static` and included in Python wheels.

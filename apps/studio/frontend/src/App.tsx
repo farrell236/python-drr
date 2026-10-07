@@ -9,6 +9,7 @@ import { ResultsWorkspace } from './components/ResultsWorkspace'
 import { UploadPanel } from './components/UploadPanel'
 import { ViewerWorkspace } from './components/ViewerWorkspace'
 import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, VolumeInfo, WindowLevel, Workspace } from './types'
+import { activeVolumeRenderSettings, defaultVolumeRenderState, volumeRenderLabel } from './volumeRendering'
 
 const DEFAULT_SETTINGS: RenderSettings = {
   volume_id: '',
@@ -47,6 +48,7 @@ export default function App() {
   const [volume, setVolume] = useState<VolumeInfo | null>(null)
   const [settings, setSettings] = useState<RenderSettings>(DEFAULT_SETTINGS)
   const [windowLevel, setWindowLevel] = useState<WindowLevel>({ center: 40, width: 400 })
+  const [volumeRenderState, setVolumeRenderState] = useState(defaultVolumeRenderState)
   const [batchSettings, setBatchSettings] = useState<BatchSettings>({ render: DEFAULT_SETTINGS, start_angle_deg: 0, end_angle_deg: 355, step_deg: 5, shared_normalization: true, include_raw: true })
   const [activeRender, setActiveRender] = useState<JobInfo | null>(null)
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
@@ -79,6 +81,7 @@ export default function App() {
   const busy = !!activeRender && ['queued', 'running'].includes(activeRender.status)
   const resultCount = jobs.filter((job) => job.status === 'completed').length
   const activeSettings = useMemo(() => ({ ...settings, volume_id: volume?.id || '' }), [settings, volume])
+  const volumeRendering = useMemo(() => activeVolumeRenderSettings(volumeRenderState), [volumeRenderState])
 
   const addOrUpdateJob = (job: JobInfo) => {
     setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
@@ -97,6 +100,7 @@ export default function App() {
       setActiveBatch(null)
       setSavedViews([])
       setWindowLevel(defaultWindowLevel(info))
+      setVolumeRenderState(defaultVolumeRenderState())
       setWorkspace('viewer')
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Could not load the volume')
@@ -162,7 +166,9 @@ export default function App() {
           volume={volume}
           settings={activeSettings}
           windowLevel={windowLevel}
+          volumeRenderState={volumeRenderState}
           onWindowLevelChange={setWindowLevel}
+          onVolumeRenderStateChange={setVolumeRenderState}
           onIsocenterChange={([x, y, z]) => setSettings((current) => ({ ...current, translate_x_mm: x, translate_y_mm: y, translate_z_mm: z }))}
           onOpenAcquire={() => setWorkspace('acquire')}
         />
@@ -173,8 +179,8 @@ export default function App() {
           <div className="workbench-canvas">
             <div className="viewer-grid">
               <section className="viewer-panel scene-panel">
-                <header className="panel-header"><span><Box /> Acquisition geometry</span><span className="status completed"><i />Volume ready</span></header>
-                <AcquisitionScene volume={volume} settings={activeSettings} />
+                <header className="panel-header"><span><Box /> Acquisition geometry</span><span className="status completed"><i />{volumeRenderLabel(volumeRendering)}</span></header>
+                <AcquisitionScene volume={volume} settings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} />
               </section>
               <ProjectionViewer job={activeRender} settings={activeSettings} />
             </div>
@@ -189,7 +195,7 @@ export default function App() {
         </main>
       )}
 
-      {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
+      {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
       {workspace === 'results' && <ResultsWorkspace jobs={jobs} />}
     </div>
   )

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Box, Download, Orbit, Pause, Play, Square, Timer } from 'lucide-react'
-import type { BatchSettings, JobInfo, RenderSettings, VolumeInfo } from '../types'
+import type { BatchSettings, JobInfo, RenderSettings, VolumeInfo, VolumeRenderSettings, WindowLevel } from '../types'
 import { AcquisitionScene } from './AcquisitionScene'
 import { blankFieldWarning, NumericInput } from './NumericInput'
 
 interface Props {
   volume: VolumeInfo
   renderSettings: RenderSettings
+  windowLevel: WindowLevel
+  rendering: VolumeRenderSettings
   batchSettings: BatchSettings
   job: JobInfo | null
   onChange: (settings: BatchSettings) => void
@@ -15,7 +17,7 @@ interface Props {
   onCancel: () => void
 }
 
-export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onChange, onRun, onValidationError, onCancel }: Props) {
+export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering, batchSettings, job, onChange, onRun, onValidationError, onCancel }: Props) {
   const [blankFields, setBlankFields] = useState<Record<string, string>>({})
   const trackBlankField = useCallback((fieldId: string, label: string, blank: boolean) => {
     setBlankFields((current) => {
@@ -92,6 +94,8 @@ export function BatchWorkspace({ volume, renderSettings, batchSettings, job, onC
           <AcquisitionScene
             volume={volume}
             settings={{ ...renderSettings, projection_angle_deg: displayAngle }}
+            windowLevel={windowLevel}
+            rendering={rendering}
             compact
             showOrbit
             orbitSampleAngles={snapshotAngles}
