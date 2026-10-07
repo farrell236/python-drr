@@ -397,7 +397,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .batch-fixed dl div, .batch-summary dl div { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 10px; }
 .batch-fixed dt, .batch-summary dt { color: var(--muted); }
 .batch-fixed dd, .batch-summary dd { margin: 0; text-align: right; }
-.batch-estimate { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 11px; border-radius: 8px; background: var(--panel-alt); }
+.batch-estimates { margin-top: auto; display: grid; gap: 8px; }
+.batch-estimate { display: flex; align-items: center; gap: 10px; padding: 11px; border-radius: 8px; background: var(--panel-alt); }
 .batch-estimate svg { width: 18px; height: 18px; color: var(--blue); }
 .batch-estimate span { display: grid; gap: 2px; }
 .batch-estimate small { color: var(--muted); font-size: 9px; }

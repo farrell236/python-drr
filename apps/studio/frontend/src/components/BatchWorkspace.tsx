@@ -100,8 +100,10 @@ export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering,
           <label><span><b>Shared normalization</b><small>Keep brightness comparable across views</small></span><input type="checkbox" checked={batchSettings.shared_normalization} onChange={(event) => update({ shared_normalization: event.target.checked })} /></label>
           <label><span><b>Include raw arrays</b><small>Save a Float32 NPY for every projection</small></span><input type="checkbox" checked={batchSettings.include_raw} onChange={(event) => update({ include_raw: event.target.checked })} /></label>
         </div>
-        <div className="batch-estimate"><Timer /><span><small>Projection count</small><b>{frameCount} views</b></span></div>
-        <div className="batch-estimate"><Box /><span><small>Estimated output</small><b>about {formatBytes(estimatedBytes)}</b></span></div>
+        <div className="batch-estimates">
+          <div className="batch-estimate"><Timer /><span><small>Projection count</small><b>{frameCount} views</b></span></div>
+          <div className="batch-estimate"><Box /><span><small>Estimated output</small><b>about {formatBytes(estimatedBytes)}</b></span></div>
+        </div>
         {!rangeValid && <div className="geometry-warning"><AlertTriangle />End angle must be greater than or equal to start angle.</div>}
         {!readiness.ready && <div className="geometry-warning"><AlertTriangle />{runtimeError || readiness.message}</div>}
         {readiness.metrics.warnings.map((warning) => <div className="geometry-warning" key={warning}><AlertTriangle />{warning}</div>)}
