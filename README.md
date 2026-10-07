@@ -114,9 +114,10 @@ machine.
 Studio opens uploaded volumes in a Slicer-style 2 × 2 viewer with linked axial,
 coronal, and sagittal views plus an orbitable 3D context. The Viewer provides
 physical orientation labels, CT window presets, slice navigation, pan and zoom
-controls, and click-to-position crosshairs. The 3D view shows the volume bounds,
-active slice planes, and isocenter. The linked crosshair is the acquisition
-isocenter used by the Acquire and Batch workspaces.
+controls, and click-to-position crosshairs. The 3D view maps the current images
+onto the volume's active slice planes and shows its bounds and isocenter. The
+linked crosshair is the acquisition isocenter used by the Acquire and Batch
+workspaces.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation

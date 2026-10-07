@@ -1,9 +1,12 @@
 import { Box, RotateCcw } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import '@kitware/vtk.js/Rendering/Profiles/Geometry'
+// @ts-expect-error vtk.js exposes a runtime default that is missing from its declaration file.
+import vtkImageHelper from '@kitware/vtk.js/Common/Core/ImageHelper'
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor'
 import vtkAxesActor from '@kitware/vtk.js/Rendering/Core/AxesActor'
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper'
+import vtkTexture from '@kitware/vtk.js/Rendering/Core/Texture'
 import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource'
 import vtkPlaneSource from '@kitware/vtk.js/Filters/Sources/PlaneSource'
 import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource'
@@ -12,11 +15,13 @@ import vtkInteractorStyleManipulator from '@kitware/vtk.js/Interaction/Style/Int
 import vtkGestureCameraManipulator from '@kitware/vtk.js/Interaction/Manipulators/GestureCameraManipulator'
 import vtkMouseCameraTrackballRotateManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballRotateManipulator'
 import vtkMouseCameraTrackballZoomManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballZoomManipulator'
-import type { VolumeInfo, VoxelZYX } from '../types'
+import { volumeSliceUrl } from '../api'
+import type { VolumeInfo, VoxelZYX, WindowLevel } from '../types'
 
 interface Props {
   volume: VolumeInfo
   voxel: VoxelZYX
+  windowLevel: WindowLevel
 }
 
 type Point3 = [number, number, number]
@@ -54,10 +59,10 @@ function directedPoint(direction: number[][], point: Point3): Point3 {
   ]
 }
 
-export function Volume3DViewport({ volume, voxel }: Props) {
+export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const resetCameraRef = useRef<() => void>(() => undefined)
-  const updateSlicesRef = useRef<(next: VoxelZYX) => void>(() => undefined)
+  const updateSlicesRef = useRef<(next: VoxelZYX, nextWindowLevel: WindowLevel) => void>(() => undefined)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -90,23 +95,25 @@ export function Volume3DViewport({ volume, voxel }: Props) {
     boundsActor.getProperty().setLineWidth(1)
     boundsActor.setUserMatrix(transform)
 
-    const axialSource = vtkPlaneSource.newInstance()
-    const coronalSource = vtkPlaneSource.newInstance()
-    const sagittalSource = vtkPlaneSource.newInstance()
+    const axialSource = vtkPlaneSource.newInstance({ xResolution: 1, yResolution: 1 })
+    const coronalSource = vtkPlaneSource.newInstance({ xResolution: 1, yResolution: 1 })
+    const sagittalSource = vtkPlaneSource.newInstance({ xResolution: 1, yResolution: 1 })
     const planeActors = [
-      addActor(renderer, axialSource, [0.94, 0.28, 0.31], 0.3),
-      addActor(renderer, coronalSource, [0.29, 0.78, 0.47], 0.3),
-      addActor(renderer, sagittalSource, [0.96, 0.77, 0.22], 0.3),
+      addActor(renderer, axialSource, [1, 1, 1]),
+      addActor(renderer, coronalSource, [1, 1, 1]),
+      addActor(renderer, sagittalSource, [1, 1, 1]),
     ]
     planeActors.forEach((actor) => {
       actor.setUserMatrix(transform)
       actor.getProperty().setEdgeVisibility(true)
       actor.getProperty().setLineWidth(1.4)
       actor.getProperty().setLighting(false)
+      actor.setForceOpaque(true)
     })
     planeActors[0].getProperty().setEdgeColor(0.94, 0.28, 0.31)
     planeActors[1].getProperty().setEdgeColor(0.29, 0.78, 0.47)
     planeActors[2].getProperty().setEdgeColor(0.96, 0.77, 0.22)
+    const planeTextures = planeActors.map(() => vtkTexture.newInstance({ interpolate: true, edgeClamp: true }))
 
     const isoRadius = Math.max(1.8, Math.min(sizeX, sizeY, sizeZ) * 0.018)
     const isoSource = vtkSphereSource.newInstance({ radius: isoRadius, thetaResolution: 20, phiResolution: 14 })
@@ -122,7 +129,9 @@ export function Volume3DViewport({ volume, voxel }: Props) {
     axesActor.setScale(axesLength, axesLength, axesLength)
     renderer.addActor(axesActor)
 
-    const updateSlices = (next: VoxelZYX) => {
+    const textureUrls = ['', '', '']
+    const textureRevisions = [0, 0, 0]
+    const updateSlices = (next: VoxelZYX, nextWindowLevel: WindowLevel) => {
       const x = (next[2] - (nx - 1) / 2) * sx
       const y = (next[1] - (ny - 1) / 2) * sy
       const z = (next[0] - (nz - 1) / 2) * sz
@@ -140,11 +149,30 @@ export function Volume3DViewport({ volume, voxel }: Props) {
       const center = directedPoint(volume.direction, [x, y, z])
       isoActor.setPosition(...center)
       axesActor.setPosition(...center)
+
+      const indices = [Math.round(next[0]), Math.round(next[1]), Math.round(next[2])]
+      ;(['axial', 'coronal', 'sagittal'] as const).forEach((axis, axisIndex) => {
+        const url = volumeSliceUrl(volume.id, axis, indices[axisIndex], nextWindowLevel.center, nextWindowLevel.width)
+        if (url === textureUrls[axisIndex]) return
+        textureUrls[axisIndex] = url
+        textureRevisions[axisIndex] += 1
+        const revision = textureRevisions[axisIndex]
+        const image = new Image()
+        image.decoding = 'async'
+        image.onload = () => {
+          if (revision !== textureRevisions[axisIndex]) return
+          const texture = planeTextures[axisIndex]
+          texture.setInputData(vtkImageHelper.imageToImageData(image))
+          if (!planeActors[axisIndex].hasTexture(texture)) planeActors[axisIndex].addTexture(texture)
+          renderWindow.render()
+        }
+        image.src = url
+      })
       renderer.resetCameraClippingRange()
       renderWindow.render()
     }
     updateSlicesRef.current = updateSlices
-    updateSlices(voxel)
+    updateSlices(voxel, windowLevel)
 
     const resetCamera = () => {
       const camera = renderer.getActiveCamera()
@@ -173,8 +201,8 @@ export function Volume3DViewport({ volume, voxel }: Props) {
   }, [volume])
 
   useEffect(() => {
-    updateSlicesRef.current(voxel)
-  }, [voxel])
+    updateSlicesRef.current(voxel, windowLevel)
+  }, [voxel, windowLevel])
 
   return (
     <section className="mpr-panel viewer-3d-panel">

@@ -203,7 +203,7 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
         {(['axial', 'coronal', 'sagittal'] as SliceAxis[]).map((axis) => (
           <SliceViewport key={axis} axis={axis} volume={volume} voxel={voxel} windowLevel={windowLevel} onVoxelChange={setVoxel} />
         ))}
-        <Volume3DViewport volume={volume} voxel={voxel} />
+        <Volume3DViewport volume={volume} voxel={voxel} windowLevel={windowLevel} />
       </div>
 
       <aside className="viewer-controls">

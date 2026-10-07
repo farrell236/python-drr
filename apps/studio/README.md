@@ -32,10 +32,11 @@ the installed commands are `pydrr` and `pydrr-studio`.
 ## Workspaces
 
 - **Viewer** uses a Slicer-style 2 × 2 layout with linked axial, coronal, and
-  sagittal slices plus an orbitable 3D context. The 3D view shows the volume
-  bounds, active slice planes, and acquisition isocenter. Physical orientation
-  labels, CT window presets, slice navigation, pan, zoom, and reset controls
-  are included. Clicking a slice positions the shared acquisition isocenter.
+  sagittal slices plus an orbitable 3D context. The 3D view maps the current
+  images onto the active slice planes and shows the volume bounds and
+  acquisition isocenter. Physical orientation labels, CT window presets, slice
+  navigation, pan, zoom, and reset controls are included. Clicking a slice
+  positions the shared acquisition isocenter.
 - **Acquire** configures and renders a single projection from that isocenter.
 - **Batch** previews and executes an angle sweep with the active geometry.
 - **Results** lists completed projections and downloadable archives from the
