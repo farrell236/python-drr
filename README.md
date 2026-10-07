@@ -124,6 +124,9 @@ display copy and does not alter the source image used for DRR generation. The
 linked crosshair is the acquisition isocenter used by the Acquire and Batch
 workspaces. The active slice-plane or volume-rendering appearance, including
 manual shift and opacity adjustments, carries into both geometry previews.
+Studio Settings provides persistent system/light/dark appearance choices,
+compute defaults, and a detailed view of the active Python environment and
+available rendering backends.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation

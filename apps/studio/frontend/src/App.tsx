@@ -1,4 +1,4 @@
-import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Upload, Zap } from 'lucide-react'
+import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Settings2, Upload, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { cancelJob, createBatch, createRender, getRuntime, uploadVolume, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
@@ -6,9 +6,11 @@ import { BatchWorkspace } from './components/BatchWorkspace'
 import { ParameterPanel } from './components/ParameterPanel'
 import { ProjectionViewer } from './components/ProjectionViewer'
 import { ResultsWorkspace } from './components/ResultsWorkspace'
+import { SettingsWorkspace } from './components/SettingsWorkspace'
 import { UploadPanel } from './components/UploadPanel'
 import { ViewerWorkspace } from './components/ViewerWorkspace'
-import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, VolumeInfo, WindowLevel, Workspace } from './types'
+import { applyTheme, loadStudioPreferences, saveStudioPreferences } from './preferences'
+import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, StudioPreferences, VolumeInfo, WindowLevel, Workspace } from './types'
 import { activeVolumeRenderSettings, defaultVolumeRenderState, volumeRenderLabel } from './volumeRendering'
 
 const DEFAULT_SETTINGS: RenderSettings = {
@@ -37,6 +39,15 @@ const DEFAULT_SETTINGS: RenderSettings = {
   cpu_workers: 1,
 }
 
+function renderDefaults(preferences: StudioPreferences, volumeId = ''): RenderSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    volume_id: volumeId,
+    backend: preferences.defaultBackend,
+    cpu_workers: preferences.defaultCpuWorkers,
+  }
+}
+
 function defaultWindowLevel(volume: VolumeInfo): WindowLevel {
   if (volume.intensity_min <= -500 && volume.intensity_max >= 300) return { center: 40, width: 400 }
   const width = Math.max(1, volume.intensity_max - volume.intensity_min)
@@ -44,12 +55,14 @@ function defaultWindowLevel(volume: VolumeInfo): WindowLevel {
 }
 
 export default function App() {
+  const initialPreferences = useMemo(loadStudioPreferences, [])
+  const [preferences, setPreferences] = useState<StudioPreferences>(initialPreferences)
   const [workspace, setWorkspace] = useState<Workspace>('viewer')
   const [volume, setVolume] = useState<VolumeInfo | null>(null)
-  const [settings, setSettings] = useState<RenderSettings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<RenderSettings>(() => renderDefaults(initialPreferences))
   const [windowLevel, setWindowLevel] = useState<WindowLevel>({ center: 40, width: 400 })
   const [volumeRenderState, setVolumeRenderState] = useState(defaultVolumeRenderState)
-  const [batchSettings, setBatchSettings] = useState<BatchSettings>({ render: DEFAULT_SETTINGS, start_angle_deg: 0, end_angle_deg: 355, step_deg: 5, shared_normalization: true, include_raw: true })
+  const [batchSettings, setBatchSettings] = useState<BatchSettings>({ render: renderDefaults(initialPreferences), start_angle_deg: 0, end_angle_deg: 355, step_deg: 5, shared_normalization: true, include_raw: true })
   const [activeRender, setActiveRender] = useState<JobInfo | null>(null)
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
   const [jobs, setJobs] = useState<JobInfo[]>([])
@@ -58,6 +71,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  const [runtimeRefreshing, setRuntimeRefreshing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -78,10 +92,35 @@ export default function App() {
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    applyTheme(preferences.theme)
+    saveStudioPreferences(preferences)
+  }, [preferences])
+
   const busy = !!activeRender && ['queued', 'running'].includes(activeRender.status)
   const resultCount = jobs.filter((job) => job.status === 'completed').length
   const activeSettings = useMemo(() => ({ ...settings, volume_id: volume?.id || '' }), [settings, volume])
   const volumeRendering = useMemo(() => activeVolumeRenderSettings(volumeRenderState), [volumeRenderState])
+
+  const handlePreferencesChange = (next: StudioPreferences) => {
+    setPreferences(next)
+    setSettings((current) => ({ ...current, backend: next.defaultBackend, cpu_workers: next.defaultCpuWorkers }))
+    setBatchSettings((current) => ({ ...current, render: { ...current.render, backend: next.defaultBackend, cpu_workers: next.defaultCpuWorkers } }))
+  }
+
+  const refreshRuntime = async () => {
+    setRuntimeRefreshing(true)
+    try {
+      const info = await getRuntime()
+      setRuntime(info)
+      setRuntimeError(null)
+    } catch (runtimeFailure) {
+      setRuntime(null)
+      setRuntimeError(runtimeFailure instanceof Error ? runtimeFailure.message : 'Could not inspect the Python runtime')
+    } finally {
+      setRuntimeRefreshing(false)
+    }
+  }
 
   const addOrUpdateJob = (job: JobInfo) => {
     setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
@@ -93,7 +132,7 @@ export default function App() {
     try {
       const info = await uploadVolume(file)
       setVolume(info)
-      const next = { ...DEFAULT_SETTINGS, volume_id: info.id }
+      const next = renderDefaults(preferences, info.id)
       setSettings(next)
       setBatchSettings((current) => ({ ...current, render: next }))
       setActiveRender(null)
@@ -191,12 +230,13 @@ export default function App() {
               <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
             </section>
           </div>
-          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onValidationError={setError} onReset={() => setSettings({ ...DEFAULT_SETTINGS, volume_id: volume.id })} volumeFilename={volume.filename} />
+          <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onValidationError={setError} onReset={() => setSettings(renderDefaults(preferences, volume.id))} volumeFilename={volume.filename} />
         </main>
       )}
 
       {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
       {workspace === 'results' && <ResultsWorkspace jobs={jobs} />}
+      {workspace === 'settings' && <SettingsWorkspace preferences={preferences} runtime={runtime} runtimeError={runtimeError} runtimeRefreshing={runtimeRefreshing} volume={volume} jobCount={jobs.length} onChange={handlePreferencesChange} onRefreshRuntime={() => void refreshRuntime()} />}
     </div>
   )
 }
@@ -210,6 +250,7 @@ function AppHeader({ workspace, onWorkspace, resultCount, volume, onReplace }: {
         <button type="button" className={workspace === 'acquire' ? 'active' : ''} onClick={() => onWorkspace('acquire')}><Zap /> Acquire</button>
         <button type="button" className={workspace === 'batch' ? 'active' : ''} onClick={() => onWorkspace('batch')}><Orbit /> Batch</button>
         <button type="button" className={workspace === 'results' ? 'active' : ''} onClick={() => onWorkspace('results')}><Layers3 /> Results {resultCount > 0 && <i>{resultCount}</i>}</button>
+        <button type="button" className={workspace === 'settings' ? 'active' : ''} onClick={() => onWorkspace('settings')}><Settings2 /> Settings</button>
       </nav>
       <div className="header-actions">
         {volume && <button type="button" className="button secondary" onClick={onReplace}><Upload /> Replace volume</button>}

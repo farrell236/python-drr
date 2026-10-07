@@ -49,6 +49,9 @@ the installed commands are `pydrr` and `pydrr-studio`.
   the same patient rendering selected in Viewer.
 - **Results** lists completed projections and downloadable archives from the
   current local session.
+- **Settings** stores application-wide appearance and compute defaults in the
+  browser. It also reports the Python executable, detected compute devices,
+  and installed core and accelerator packages used by the local server.
 
 The Viewer converts between voxel indices and physical world coordinates using
 the NIfTI spacing, origin, and direction matrix. Its isocenter therefore uses
@@ -60,7 +63,9 @@ Studio uses the Python environment that launches `pydrr-studio`. Its
 Performance panel reports that executable and the CPU, CUDA, and MPS devices
 detected by the core package. Automatic selection prefers CUDA, then Apple
 Silicon MPS, then CPU. Users can explicitly select any available backend, so a
-machine with CUDA can still run a CPU acquisition.
+machine with CUDA can still run a CPU acquisition. The preferred backend and
+CPU worker count can be saved in Settings; individual acquisitions can still
+override those defaults.
 
 Projection and batch jobs run in subprocesses launched by the same Python
 executable. Studio does not select other environments or install packages at

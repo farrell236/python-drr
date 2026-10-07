@@ -1,5 +1,6 @@
-export type Workspace = 'viewer' | 'acquire' | 'batch' | 'results'
+export type Workspace = 'viewer' | 'acquire' | 'batch' | 'results' | 'settings'
 export type BackendName = 'auto' | 'cpu' | 'cuda' | 'mps'
+export type ThemePreference = 'system' | 'light' | 'dark'
 export type SliceAxis = 'axial' | 'coronal' | 'sagittal'
 export type VoxelZYX = [number, number, number]
 export type VolumeRenderMode = 'slices' | 'bone' | 'soft-tissue' | 'skin'
@@ -30,6 +31,12 @@ export interface VolumeRenderData {
 export interface WindowLevel {
   center: number
   width: number
+}
+
+export interface StudioPreferences {
+  theme: ThemePreference
+  defaultBackend: BackendName
+  defaultCpuWorkers: number
 }
 
 export interface VolumeInfo {
