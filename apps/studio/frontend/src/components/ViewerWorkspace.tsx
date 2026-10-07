@@ -107,7 +107,6 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
     <section className="mpr-panel">
       <header>
         <span><ScanLine /> {AXIS_NAMES[axis]}</span>
-        <small>Slice {index + 1} / {geometry.maxIndex + 1}</small>
       </header>
       <div className="slice-stage">
         <svg
@@ -161,10 +160,6 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
           <button type="button" aria-label={`Reset ${axis} view`} title="Fit image" onClick={resetView}><RotateCcw /></button>
         </div>
       </div>
-      <footer>
-        <input aria-label={`${AXIS_NAMES[axis]} slice`} type="range" min={0} max={geometry.maxIndex} step={1} value={index} onChange={(event) => setSlice(Number(event.target.value))} />
-        <span>Scroll to move through slices · drag to pan · click to set isocenter</span>
-      </footer>
     </section>
   )
 }
@@ -196,6 +191,13 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
   }
 
   const centerIsocenter = () => setVoxel(volume.shape_zyx.map((size) => (size - 1) / 2) as VoxelZYX)
+
+  const setSlice = (axis: SliceAxis, nextIndex: number) => {
+    const geometry = planeGeometry(volume, axis)
+    const next = [...voxel] as VoxelZYX
+    next[geometry.indexAxis] = Math.min(geometry.maxIndex, Math.max(0, nextIndex))
+    setVoxel(next)
+  }
 
   return (
     <main className="viewer-workspace">
@@ -251,6 +253,30 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
             <div><dt>Spacing</dt><dd>{volume.spacing_zyx_mm[2].toFixed(2)} × {volume.spacing_zyx_mm[1].toFixed(2)} × {volume.spacing_zyx_mm[0].toFixed(2)} mm</dd></div>
             <div><dt>Intensity</dt><dd>{rounded(volume.intensity_min)} to {rounded(volume.intensity_max)}</dd></div>
           </dl>
+        </section>
+
+        <section className="slice-navigation">
+          <span className="eyebrow">Slice position</span>
+          {(['axial', 'coronal', 'sagittal'] as SliceAxis[]).map((axis) => {
+            const geometry = planeGeometry(volume, axis)
+            const index = Math.round(voxel[geometry.indexAxis])
+            return (
+              <label className={`slice-navigation-row ${axis}`} key={axis}>
+                <span>{AXIS_NAMES[axis]}</span>
+                <input
+                  aria-label={`${AXIS_NAMES[axis]} slice`}
+                  type="range"
+                  min={0}
+                  max={geometry.maxIndex}
+                  step={1}
+                  value={index}
+                  onChange={(event) => setSlice(axis, Number(event.target.value))}
+                />
+                <output>{index + 1} / {geometry.maxIndex + 1}</output>
+              </label>
+            )
+          })}
+          <small>Scroll over a 2D view or use these linked controls.</small>
         </section>
 
         <div className="viewer-controls-spacer" />

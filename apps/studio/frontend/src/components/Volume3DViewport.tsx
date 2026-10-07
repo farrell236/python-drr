@@ -220,15 +220,13 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
           <span className="axis-y">Y · P</span>
           <span className="axis-z">Z · S</span>
         </div>
-      </div>
-      <footer className="viewer-3d-footer">
-        <div className="viewer-3d-legend" aria-label="Slice plane colors">
+        <div className="viewer-3d-legend viewer-3d-overlay-legend" aria-label="Slice plane colors">
           <span className="axial">Axial</span>
           <span className="coronal">Coronal</span>
           <span className="sagittal">Sagittal</span>
         </div>
-        <span>Drag to orbit · scroll to zoom</span>
-      </footer>
+        <span className="viewer-3d-hint">Drag to orbit · scroll to zoom</span>
+      </div>
     </section>
   )
 }
