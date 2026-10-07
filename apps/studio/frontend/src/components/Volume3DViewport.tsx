@@ -24,7 +24,7 @@ import vtkMouseCameraTrackballRotateManipulator from '@kitware/vtk.js/Interactio
 import vtkMouseCameraTrackballZoomManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballZoomManipulator'
 import { getVolumeRenderData, volumeSliceUrl } from '../api'
 import type { VolumeInfo, VolumeRenderSettings, VoxelZYX, WindowLevel } from '../types'
-import { directedPoint, directionMatrix, imageDirection, TRANSFER_PRESETS, volumeRenderLabel } from '../volumeRendering'
+import { directedPoint, directionMatrix, imageDirection, TRANSFER_PRESETS, volumeRenderLabel, VTK_SLICE_TEXTURE_TRANSFORM } from '../volumeRendering'
 
 interface Props {
   volume: VolumeInfo
@@ -243,7 +243,7 @@ export function Volume3DViewport({ volume, voxel, windowLevel, rendering }: Prop
         image.onload = () => {
           if (disposed || revision !== textureRevisions[axisIndex]) return
           const texture = planeTextures[axisIndex]
-          texture.setInputData(vtkImageHelper.imageToImageData(image))
+          texture.setInputData(vtkImageHelper.imageToImageData(image, VTK_SLICE_TEXTURE_TRANSFORM))
           if (!planeActors[axisIndex].hasTexture(texture)) planeActors[axisIndex].addTexture(texture)
           renderWindow.render()
         }

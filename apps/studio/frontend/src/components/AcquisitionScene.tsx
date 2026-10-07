@@ -30,7 +30,7 @@ import { RotateCcw } from 'lucide-react'
 import { getVolumeRenderData, volumeSliceUrl } from '../api'
 import type { RenderSettings, VolumeInfo, VolumeRenderSettings, WindowLevel } from '../types'
 import { clampVoxel, worldToVoxel } from '../viewerGeometry'
-import { directedPoint, directionMatrix, imageDirection, TRANSFER_PRESETS, volumeRenderLabel } from '../volumeRendering'
+import { directedPoint, directionMatrix, imageDirection, TRANSFER_PRESETS, volumeRenderLabel, VTK_SLICE_TEXTURE_TRANSFORM } from '../volumeRendering'
 
 interface Props {
   volume: VolumeInfo
@@ -259,7 +259,7 @@ export function AcquisitionScene({ volume, settings, windowLevel, rendering, com
         image.onload = () => {
           if (disposed || revision !== textureRevisions[axisIndex]) return
           const texture = planeTextures[axisIndex]
-          texture.setInputData(vtkImageHelper.imageToImageData(image))
+          texture.setInputData(vtkImageHelper.imageToImageData(image, VTK_SLICE_TEXTURE_TRANSFORM))
           if (!planeActors[axisIndex].hasTexture(texture)) planeActors[axisIndex].addTexture(texture)
           renderWindow.render()
         }

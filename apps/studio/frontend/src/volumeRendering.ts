@@ -23,6 +23,15 @@ export const DEFAULT_RENDER_CONTROLS: VolumeRenderState['controls'] = {
   skin: { shift: 0, opacity: 1 },
 }
 
+// Slice PNGs are flipped vertically by the local API for browser top-left image
+// coordinates. vtkImageData uses its first pixel row at texture Y=0, so undo
+// that display flip before mapping the same pixels into physical 3D space.
+export const VTK_SLICE_TEXTURE_TRANSFORM = {
+  flipX: false,
+  flipY: true,
+  rotate: 0,
+}
+
 export const TRANSFER_PRESETS: Record<AdjustableVolumeRenderMode, TransferPreset> = {
   bone: {
     label: 'Bone',
