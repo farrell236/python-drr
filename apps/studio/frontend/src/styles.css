@@ -284,21 +284,34 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .image-toolbar > .zoom-readout { min-width: 32px; margin-left: 0; text-align: center; font-variant-numeric: tabular-nums; }
 .image-toolbar button:disabled { opacity: .35; cursor: not-allowed; }
 .tool-link { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 6px; color: var(--blue); text-decoration: none; background: var(--blue-soft); }
-.acquisition-tray { min-height: 78px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-.tray-title { min-width: 105px; display: grid; gap: 2px; }
-.saved-view-card { min-width: 157px; display: grid; grid-template-columns: minmax(0, 1fr) 27px; align-items: stretch; overflow: hidden; border-radius: 7px; background: var(--blue-soft); }
-.saved-view { min-width: 0; display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 0; color: var(--blue); background: transparent; text-align: left; cursor: pointer; }
+.acquisition-tray { min-height: 78px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; overflow: visible; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.tray-title { min-width: 114px; display: flex; align-items: center; gap: 7px; flex: none; white-space: nowrap; }
+.tray-count { min-width: 20px; height: 20px; display: inline-grid; place-items: center; padding: 0 6px; border-radius: 10px; color: var(--blue); background: var(--blue-soft); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.saved-view-deck { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; padding: 5px 18px 5px 2px; overflow-x: auto; scrollbar-width: thin; }
+.saved-view-card { position: relative; min-width: 140px; height: 53px; flex: 0 0 140px; margin-left: -18px; border: 1px solid color-mix(in srgb, var(--blue) 18%, var(--line)); border-radius: 9px; background: var(--panel); box-shadow: 0 4px 12px rgba(20, 36, 52, .1); transition: transform .16s ease, margin-right .16s ease, box-shadow .16s ease; }
+.saved-view-card:first-child { margin-left: 0; }
+.saved-view-card:hover, .saved-view-card:focus-within { z-index: 50 !important; margin-right: 12px; transform: translateY(-3px); box-shadow: 0 9px 22px rgba(20, 36, 52, .18); }
+.saved-view { width: 100%; height: 100%; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 5px 27px 5px 6px; border: 0; border-radius: 8px; color: var(--blue); background: transparent; text-align: left; cursor: pointer; }
 .saved-view > span:last-child { display: grid; gap: 2px; }
 .saved-view small { color: var(--muted); font-size: 9px; }
-.saved-view-delete { display: grid; place-items: center; border: 0; border-left: 1px solid color-mix(in srgb, var(--blue) 18%, transparent); color: var(--muted); background: transparent; cursor: pointer; }
-.saved-view-delete:hover { color: var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); }
-.saved-view-delete svg { width: 13px; height: 13px; }
+.saved-view-more { position: absolute; right: 3px; top: 3px; width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--muted); background: color-mix(in srgb, var(--panel) 88%, transparent); opacity: 0; cursor: pointer; transition: opacity .12s, color .12s, background .12s; }
+.saved-view-card:hover .saved-view-more, .saved-view-card:focus-within .saved-view-more { opacity: 1; }
+.saved-view-more:hover { color: var(--text); background: var(--panel-deep); }
+.saved-view-more svg { width: 14px; height: 14px; }
 .saved-thumb { width: 43px; height: 43px; display: grid; place-items: center; overflow: hidden; border-radius: 5px; color: #99a9b5; background: #111820; }
 .saved-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .saved-thumb svg { width: 17px; height: 17px; }
-.save-view { min-width: 92px; height: 51px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed var(--line); border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; }
+.save-view { min-width: 98px; height: 51px; flex: none; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--blue) 38%, var(--line)); border-radius: 9px; color: var(--blue); background: color-mix(in srgb, var(--blue) 4%, var(--panel)); cursor: pointer; }
+.save-view:hover { border-style: solid; background: var(--blue-soft); }
 .save-view svg { width: 14px; height: 14px; }
-.tray-batch { margin-left: auto; white-space: nowrap; }
+.tray-batch { margin-left: auto; flex: none; white-space: nowrap; }
+.saved-view-menu-layer { position: fixed; inset: 0; z-index: 100; }
+.saved-view-menu { position: fixed; width: 148px; padding: 5px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--panel) 96%, transparent); box-shadow: 0 12px 34px rgba(18, 31, 45, .22); backdrop-filter: blur(16px); }
+.saved-view-menu button { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 6px 9px; border: 0; border-radius: 7px; color: var(--red); background: transparent; text-align: left; cursor: pointer; }
+.saved-view-menu button:hover { background: color-mix(in srgb, var(--red) 9%, transparent); }
+.saved-view-menu svg { width: 14px; height: 14px; }
+.undo-toast { position: fixed; left: 50%; bottom: 22px; z-index: 110; display: flex; align-items: center; gap: 18px; transform: translateX(-50%); padding: 9px 10px 9px 14px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 11px; color: var(--text); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 12px 34px rgba(18, 31, 45, .22); backdrop-filter: blur(16px); font-size: 10px; }
+.undo-toast button { min-height: 27px; padding: 3px 8px; border: 0; border-radius: 7px; color: var(--blue); background: var(--blue-soft); font-weight: 650; cursor: pointer; }
 
 .parameter-panel { min-width: 0; display: flex; flex-direction: column; gap: 11px; padding: 13px; overflow-y: auto; border-left: 1px solid var(--line); background: var(--panel); }
 .parameter-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

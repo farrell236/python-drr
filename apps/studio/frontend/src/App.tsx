@@ -1,5 +1,7 @@
-import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Settings2, Trash2, Upload, Zap } from 'lucide-react'
+import { AlertTriangle, Box, Layers3, MoreHorizontal, Orbit, Plus, ScanLine, Settings2, Trash2, Upload, Zap } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { cancelJob, createBatch, createRender, getRuntime, uploadVolume, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
 import { BatchWorkspace } from './components/BatchWorkspace'
@@ -69,6 +71,8 @@ export default function App() {
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
   const [jobs, setJobs] = useState<JobInfo[]>([])
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
+  const [savedViewMenu, setSavedViewMenu] = useState<{ viewId: string; left: number; top: number } | null>(null)
+  const [deletedSavedView, setDeletedSavedView] = useState<{ view: SavedView; index: number } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
@@ -98,6 +102,16 @@ export default function App() {
     applyTheme(preferences.theme)
     saveStudioPreferences(preferences)
   }, [preferences])
+
+  useEffect(() => {
+    setSavedViewMenu(null)
+  }, [workspace])
+
+  useEffect(() => {
+    if (!deletedSavedView) return
+    const timer = window.setTimeout(() => setDeletedSavedView(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [deletedSavedView])
 
   const busy = !!activeRender && ['queued', 'running'].includes(activeRender.status)
   const resultCount = jobs.filter((job) => job.status === 'completed').length
@@ -141,6 +155,8 @@ export default function App() {
       setRenderedSettings(null)
       setActiveBatch(null)
       setSavedViews([])
+      setSavedViewMenu(null)
+      setDeletedSavedView(null)
       setWindowLevel(defaultWindowLevel(info))
       setVolumeRenderState(defaultVolumeRenderState())
       setWorkspace('viewer')
@@ -198,12 +214,43 @@ export default function App() {
 
   const saveView = () => {
     const usedNames = new Set(savedViews.map((view) => view.name))
+    if (deletedSavedView) usedNames.add(deletedSavedView.view.name)
     let viewNumber = 1
     while (usedNames.has(`View ${viewNumber}`)) viewNumber += 1
     const name = `View ${viewNumber}`
     const matchesImage = !!renderedSettings && (Object.keys(activeSettings) as (keyof RenderSettings)[]).every((key) => activeSettings[key] === renderedSettings[key])
-    setSavedViews((current) => [...current, { id: crypto.randomUUID(), name, settings: activeSettings, imageUrl: matchesImage ? activeRender?.image_url || undefined : undefined }])
+    setSavedViews((current) => [{ id: crypto.randomUUID(), name, settings: activeSettings, imageUrl: matchesImage ? activeRender?.image_url || undefined : undefined }, ...current])
   }
+
+  const openSavedViewMenu = (event: ReactMouseEvent<HTMLButtonElement>, viewId: string) => {
+    event.stopPropagation()
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const menuWidth = 148
+    const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, bounds.right - menuWidth))
+    const top = bounds.bottom + 54 > window.innerHeight ? bounds.top - 48 : bounds.bottom + 6
+    setSavedViewMenu({ viewId, left, top })
+  }
+
+  const deleteSavedView = (viewId: string) => {
+    const index = savedViews.findIndex((view) => view.id === viewId)
+    if (index < 0) return
+    setDeletedSavedView({ view: savedViews[index], index })
+    setSavedViews((current) => current.filter((view) => view.id !== viewId))
+    setSavedViewMenu(null)
+  }
+
+  const undoDeleteSavedView = () => {
+    if (!deletedSavedView) return
+    setSavedViews((current) => {
+      if (current.some((view) => view.id === deletedSavedView.view.id)) return current
+      const next = [...current]
+      next.splice(Math.min(deletedSavedView.index, next.length), 0, deletedSavedView.view)
+      return next
+    })
+    setDeletedSavedView(null)
+  }
+
+  const menuSavedView = savedViewMenu ? savedViews.find((view) => view.id === savedViewMenu.viewId) : null
 
   if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} onUpload={handleUpload} /></div>
 
@@ -244,17 +291,19 @@ export default function App() {
               <ProjectionViewer job={activeRender} settings={activeSettings} renderedSettings={renderedSettings} />
             </div>
             <section className="acquisition-tray">
-              <div className="tray-title"><span className="eyebrow">Acquisition tray</span><b>{savedViews.length ? `${savedViews.length} saved ${savedViews.length === 1 ? 'view' : 'views'}` : 'Single view'}</b></div>
-              {savedViews.map((view) => (
-                <div className="saved-view-card" key={view.id}>
-                  <button type="button" className="saved-view" onClick={() => setSettings(view.settings)}>
-                    <span className="saved-thumb">{view.imageUrl ? <img src={view.imageUrl} alt="" /> : <ScanLine />}</span>
-                    <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
-                  </button>
-                  <button type="button" className="saved-view-delete" aria-label={`Delete ${view.name}`} title={`Delete ${view.name}`} onClick={() => setSavedViews((current) => current.filter((item) => item.id !== view.id))}><Trash2 /></button>
-                </div>
-              ))}
+              <div className="tray-title"><span className="eyebrow">Acquisition tray</span>{savedViews.length > 0 && <span className="tray-count" aria-label={`${savedViews.length} saved ${savedViews.length === 1 ? 'view' : 'views'}`}>{savedViews.length}</span>}</div>
               <button type="button" className="save-view" onClick={saveView}><Plus /> Save view</button>
+              {savedViews.length > 0 && <div className="saved-view-deck" aria-label="Saved acquisition views">
+                {savedViews.map((view, index) => (
+                  <div className="saved-view-card" key={view.id} style={{ zIndex: savedViews.length - index }}>
+                    <button type="button" className="saved-view" onClick={() => { setSettings(view.settings); setSavedViewMenu(null) }}>
+                      <span className="saved-thumb">{view.imageUrl ? <img src={view.imageUrl} alt="" /> : <ScanLine />}</span>
+                      <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
+                    </button>
+                    <button type="button" className="saved-view-more" aria-label={`More options for ${view.name}`} title={`More options for ${view.name}`} onClick={(event) => openSavedViewMenu(event, view.id)}><MoreHorizontal /></button>
+                  </div>
+                ))}
+              </div>}
               <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
             </section>
           </div>
@@ -265,6 +314,15 @@ export default function App() {
       {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
       {workspace === 'results' && <ResultsWorkspace jobs={jobs} />}
       {workspace === 'settings' && <SettingsWorkspace preferences={preferences} runtime={runtime} runtimeError={runtimeError} runtimeRefreshing={runtimeRefreshing} volume={volume} jobCount={jobs.length} onChange={handlePreferencesChange} onRefreshRuntime={() => void refreshRuntime()} />}
+      {menuSavedView && savedViewMenu && createPortal(
+        <div className="saved-view-menu-layer" onPointerDown={() => setSavedViewMenu(null)}>
+          <div className="saved-view-menu" role="menu" aria-label={`${menuSavedView.name} actions`} style={{ left: savedViewMenu.left, top: savedViewMenu.top }} onPointerDown={(event) => event.stopPropagation()}>
+            <button type="button" role="menuitem" onClick={() => deleteSavedView(menuSavedView.id)}><Trash2 /> Delete view</button>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {deletedSavedView && <div className="undo-toast" role="status"><span>{deletedSavedView.view.name} deleted</span><button type="button" onClick={undoDeleteSavedView}>Undo</button></div>}
     </div>
   )
 }
