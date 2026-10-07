@@ -308,7 +308,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .save-view.delete-view-target { border-style: solid; border-color: color-mix(in srgb, var(--red) 52%, var(--line)); color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--panel)); cursor: grabbing; }
 .save-view.delete-view-target.over { border-color: var(--red); background: color-mix(in srgb, var(--red) 16%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 14%, transparent); transform: scale(1.02); }
 .saved-view-dragging, .saved-view-dragging * { cursor: grabbing !important; }
-.tray-batch { margin-left: auto; flex: none; white-space: nowrap; }
 .undo-toast { position: fixed; left: 50%; bottom: 22px; z-index: 110; display: flex; align-items: center; gap: 18px; transform: translateX(-50%); padding: 9px 10px 9px 14px; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 11px; color: var(--text); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 12px 34px rgba(18, 31, 45, .22); backdrop-filter: blur(16px); font-size: 10px; }
 .undo-toast button { min-height: 27px; padding: 3px 8px; border: 0; border-radius: 7px; color: var(--blue); background: var(--blue-soft); font-weight: 650; cursor: pointer; }
 
@@ -578,7 +577,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .viewer-panel { min-height: 360px; }
   .mpr-panel { min-height: 0; }
   .acquisition-tray { align-items: stretch; }
-  .tray-batch { margin-left: 0; }
   .field-grid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .trajectory-panel { padding: 10px; }
   .trajectory-scene { min-height: 360px; }

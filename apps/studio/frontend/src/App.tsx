@@ -540,7 +540,6 @@ export default function App() {
                     </div>
                   ))}
                 </div>}
-                <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
               </div>
             </section>
           </div>
