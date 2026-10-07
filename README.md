@@ -158,8 +158,9 @@ temporary session. Result manifests include the package version, creation
 time, input size, and SHA-256 checksum in addition to the acquisition geometry.
 
 The installable distribution is named `python-drr`; the Python import and CLI
-remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation
-and development instructions.
+remain `pydrr`. See the [Studio User Guide](docs/studio-user-guide.md) for the
+complete workflow and the [Studio README](apps/studio/README.md) for
+installation and development instructions.
 
 The Performance panel reports the active Python executable and detected compute
 devices. Users can select automatic resolution or explicitly force CPU, CUDA,

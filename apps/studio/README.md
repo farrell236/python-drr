@@ -29,6 +29,11 @@ images and generated projections stay local.
 The distribution is named `python-drr`; its Python import remains `pydrr`, and
 the installed commands are `pydrr` and `pydrr-studio`.
 
+See the [PyDRR Studio User Guide](../../docs/studio-user-guide.md) for a
+screenshotted walkthrough of loading a volume, navigating the Viewer,
+configuring acquisitions, running batches, exporting results, and recovering a
+local session.
+
 ## Workspaces
 
 - **Viewer** uses a Slicer-style 2 × 2 layout with linked axial, coronal, and
