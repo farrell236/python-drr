@@ -23,6 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 studio = [
   "fastapi>=0.141",
+  "Pillow>=10",
+  "imageio-ffmpeg>=0.5",
   "uvicorn[standard]>=0.30",
   "python-multipart>=0.0.12",
 ]

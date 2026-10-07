@@ -1,7 +1,7 @@
 import { AlertTriangle, ChevronDown, RotateCcw, Share2, Square, Zap } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { acquisitionExportUrl } from '../api'
-import { acquisitionMetrics } from '../acquisitionGeometry'
+import { acquisitionReadiness } from '../acquisitionGeometry'
 import type { BackendName, ProjectionModelName, RenderSettings, RuntimeInfo, VolumeInfo } from '../types'
 import { blankFieldWarning, NumericInput } from './NumericInput'
 
@@ -73,14 +73,11 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onCancel, o
   const presetPlane = settings.orbit_tilt_x_deg === 0 && settings.orbit_tilt_y_deg === 0 && settings.detector_roll_deg === 0
   const exportFilename = `${filenameStem(volumeFilename)}_acquisition.sh`
   const exportHref = acquisitionExportUrl(settings)
-  const selectedBackend = settings.backend === 'auto'
-    ? runtime?.backends.find((backend) => backend.id === runtime.resolved_backend)
-    : runtime?.backends.find((backend) => backend.id === settings.backend)
+  const readiness = useMemo(() => acquisitionReadiness(volume, settings, runtime), [runtime, settings, volume])
+  const { metrics, selectedBackend } = readiness
   const resolvedLabel = selectedBackend?.label || (settings.backend === 'auto' ? 'detecting backend' : settings.backend.toUpperCase())
   const acceleratorPackages = runtime?.packages.filter((item) => ['torch', 'cupy'].includes(item.distribution) && item.installed) || []
-  const selectedBackendReady = settings.backend === 'auto' || selectedBackend?.available === true
-  const metrics = useMemo(() => acquisitionMetrics(volume, settings), [settings, volume])
-  const renderReady = runtime?.ready === true && selectedBackendReady && volume.geometry_valid && !metrics.blockingError
+  const renderReady = readiness.ready
   const render = () => {
     const labels = Object.values(blankFields)
     if (labels.length) {
@@ -209,7 +206,7 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onCancel, o
       </details>
 
       <div className="parameter-footer">
-        <span className={renderReady ? '' : 'not-ready'}><i />{busy ? 'Rendering…' : renderReady ? `${resolvedLabel} ready` : !volume.geometry_valid ? 'Volume geometry is not valid for acquisition' : metrics.blockingError || 'Python or device packages required'}</span>
+        <span className={renderReady ? '' : 'not-ready'}><i />{busy ? 'Rendering…' : renderReady ? `${resolvedLabel} ready` : readiness.message}</span>
         {busy
           ? <button type="button" className="button secondary full" onClick={onCancel}><Square /> Cancel render</button>
           : <button type="button" className="button primary full" disabled={!renderReady} onClick={render}><Zap /> Render projection</button>}

@@ -1,4 +1,4 @@
-import type { RenderSettings, VolumeInfo } from './types'
+import type { BackendInfo, RenderSettings, RuntimeInfo, VolumeInfo } from './types'
 
 export type Vector3 = [number, number, number]
 
@@ -66,6 +66,32 @@ export interface AcquisitionMetrics {
   fovAtIsocenterMm: [number, number]
   warnings: string[]
   blockingError: string | null
+}
+
+export interface AcquisitionReadiness {
+  ready: boolean
+  message: string
+  selectedBackend: BackendInfo | undefined
+  metrics: AcquisitionMetrics
+}
+
+export function acquisitionReadiness(volume: VolumeInfo, settings: RenderSettings, runtime: RuntimeInfo | null): AcquisitionReadiness {
+  const metrics = acquisitionMetrics(volume, settings)
+  const selectedBackend = settings.backend === 'auto'
+    ? runtime?.backends.find((backend) => backend.id === runtime.resolved_backend)
+    : runtime?.backends.find((backend) => backend.id === settings.backend)
+  const resolvedLabel = selectedBackend?.label || (settings.backend === 'auto' ? 'Detecting backend' : settings.backend.toUpperCase())
+  let message = `${resolvedLabel} ready`
+  if (!volume.geometry_valid) message = 'Volume geometry is not valid for acquisition'
+  else if (metrics.blockingError) message = metrics.blockingError
+  else if (!runtime?.ready) message = runtime?.status || 'Python or device packages required'
+  else if (settings.backend !== 'auto' && !selectedBackend?.available) message = `${resolvedLabel} is unavailable`
+  return {
+    ready: runtime?.ready === true && (settings.backend === 'auto' || selectedBackend?.available === true) && volume.geometry_valid && !metrics.blockingError,
+    message,
+    selectedBackend,
+    metrics,
+  }
 }
 
 export function acquisitionMetrics(volume: VolumeInfo, settings: RenderSettings): AcquisitionMetrics {

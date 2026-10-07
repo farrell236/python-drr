@@ -2,17 +2,18 @@ import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Settings2, Trash2, 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { cancelJob, createBatch, createRender, getRuntime, uploadVolume, waitForJob } from './api'
+import { cancelJob, createBatch, createRender, discardSession, getRuntime, getSession, saveSession, uploadVolume, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { ParameterPanel } from './components/ParameterPanel'
 import { ProjectionViewer } from './components/ProjectionViewer'
 import { ResultsWorkspace } from './components/ResultsWorkspace'
+import { SessionRestoreDialog } from './components/SessionRestoreDialog'
 import { SettingsWorkspace } from './components/SettingsWorkspace'
 import { UploadPanel } from './components/UploadPanel'
 import { ViewerWorkspace } from './components/ViewerWorkspace'
 import { applyTheme, loadStudioPreferences, saveStudioPreferences } from './preferences'
-import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, StudioPreferences, VolumeInfo, WindowLevel, Workspace } from './types'
+import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, SavedView, SessionSnapshot, StudioPreferences, VolumeInfo, WindowLevel, Workspace } from './types'
 import { activeVolumeRenderSettings, defaultVolumeRenderState, volumeRenderLabel } from './volumeRendering'
 
 const DEFAULT_SETTINGS: RenderSettings = {
@@ -90,6 +91,12 @@ export default function App() {
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [runtimeRefreshing, setRuntimeRefreshing] = useState(false)
+  const [sessionChecking, setSessionChecking] = useState(true)
+  const [pendingSession, setPendingSession] = useState<SessionSnapshot | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionHydrated, setSessionHydrated] = useState(false)
+  const [sessionActionBusy, setSessionActionBusy] = useState(false)
+  const [sessionError, setSessionError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const savedViewDeckRef = useRef<HTMLDivElement>(null)
   const savedViewsRef = useRef<SavedView[]>([])
@@ -113,6 +120,17 @@ export default function App() {
           setRuntimeError(runtimeFailure instanceof Error ? runtimeFailure.message : 'Could not inspect the Python runtime')
         }
       })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    getSession()
+      .then((snapshot) => {
+        if (active && snapshot.active && snapshot.session_id && snapshot.volume) setPendingSession(snapshot)
+      })
+      .catch(() => undefined)
+      .finally(() => { if (active) setSessionChecking(false) })
     return () => { active = false }
   }, [])
 
@@ -172,6 +190,25 @@ export default function App() {
     return matches ? selectedSavedViewId : null
   }, [activeSettings, savedViews, selectedSavedViewId])
 
+  useEffect(() => {
+    if (!sessionHydrated || !sessionId || !volume) return
+    const timer = window.setTimeout(() => {
+      void saveSession(sessionId, {
+        workspace,
+        settings: activeSettings,
+        windowLevel,
+        volumeRenderState,
+        batchSettings: { ...batchSettings, render: activeSettings },
+        savedViews,
+        selectedSavedViewId,
+        activeRenderId: activeRender?.id || null,
+        renderedSettings,
+        activeBatchId: activeBatch?.id || null,
+      }).catch(() => undefined)
+    }, 450)
+    return () => window.clearTimeout(timer)
+  }, [activeBatch?.id, activeRender?.id, activeSettings, batchSettings, renderedSettings, savedViews, selectedSavedViewId, sessionHydrated, sessionId, volume, volumeRenderState, windowLevel, workspace])
+
   const handlePreferencesChange = (next: StudioPreferences) => {
     setPreferences(next)
     setSettings((current) => ({ ...current, backend: next.defaultBackend, cpu_workers: next.defaultCpuWorkers }))
@@ -196,6 +233,79 @@ export default function App() {
     setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
   }
 
+  const resumeJob = (job: JobInfo) => {
+    if (!['queued', 'running'].includes(job.status)) return
+    void waitForJob(job.id, (update) => {
+      addOrUpdateJob(update)
+      if (update.kind === 'render') setActiveRender(update)
+      else setActiveBatch(update)
+    }).then((complete) => {
+      if (complete.status === 'failed') setError(complete.error || `${complete.kind === 'render' ? 'Projection' : 'Batch acquisition'} failed`)
+    }).catch((resumeError) => setError(resumeError instanceof Error ? resumeError.message : 'Could not resume job monitoring'))
+  }
+
+  const restorePreviousSession = () => {
+    if (!pendingSession?.volume || !pendingSession.session_id) return
+    setSessionActionBusy(true)
+    setSessionError(null)
+    const restoredVolume = pendingSession.volume
+    const state = pendingSession.state
+    const defaultSettings = renderDefaults(preferences, restoredVolume.id)
+    const restoredSettings = { ...defaultSettings, ...state.settings, volume_id: restoredVolume.id }
+    const defaultRendering = defaultVolumeRenderState()
+    const restoredRendering = state.volumeRenderState ? {
+      ...defaultRendering,
+      ...state.volumeRenderState,
+      controls: { ...defaultRendering.controls, ...state.volumeRenderState.controls },
+    } : defaultRendering
+    const restoredBatch = {
+      start_angle_deg: 0,
+      end_angle_deg: 355,
+      step_deg: 5,
+      shared_normalization: true,
+      include_raw: true,
+      ...state.batchSettings,
+      render: restoredSettings,
+    }
+    const restoredJobs = pendingSession.jobs
+    const restoredRender = restoredJobs.find((job) => job.id === state.activeRenderId) || null
+    const restoredBatchJob = restoredJobs.find((job) => job.id === state.activeBatchId) || null
+    setVolume(restoredVolume)
+    setSettings(restoredSettings)
+    setWindowLevel(state.windowLevel || defaultWindowLevel(restoredVolume))
+    setVolumeRenderState(restoredRendering)
+    setBatchSettings(restoredBatch)
+    setSavedViews((state.savedViews || []).map((view) => ({ ...view, settings: { ...view.settings, volume_id: restoredVolume.id } })))
+    savedViewsRef.current = (state.savedViews || []).map((view) => ({ ...view, settings: { ...view.settings, volume_id: restoredVolume.id } }))
+    setSelectedSavedViewId(state.selectedSavedViewId || null)
+    setRenderedSettings(state.renderedSettings ? { ...state.renderedSettings, volume_id: restoredVolume.id } : null)
+    setJobs(restoredJobs)
+    setActiveRender(restoredRender)
+    setActiveBatch(restoredBatchJob)
+    setWorkspace(state.workspace || 'viewer')
+    setSessionId(pendingSession.session_id)
+    setSessionHydrated(true)
+    setPendingSession(null)
+    setSessionActionBusy(false)
+    restoredJobs.forEach(resumeJob)
+  }
+
+  const startNewSession = async () => {
+    if (!pendingSession?.session_id) return
+    setSessionActionBusy(true)
+    setSessionError(null)
+    try {
+      await discardSession(pendingSession.session_id)
+      setPendingSession(null)
+      setSessionId(null)
+      setSessionHydrated(false)
+    } catch (sessionFailure) {
+      setSessionError(sessionFailure instanceof Error ? sessionFailure.message : 'Could not discard the previous session')
+    } finally {
+      setSessionActionBusy(false)
+    }
+  }
+
   const handleUpload = async (file: File) => {
     setUploading(true)
     setError(null)
@@ -208,6 +318,7 @@ export default function App() {
       setActiveRender(null)
       setRenderedSettings(null)
       setActiveBatch(null)
+      setJobs([])
       setSavedViews([])
       savedViewsRef.current = []
       setSelectedSavedViewId(null)
@@ -215,6 +326,8 @@ export default function App() {
       setWindowLevel(defaultWindowLevel(info))
       setVolumeRenderState(defaultVolumeRenderState())
       setWorkspace('viewer')
+      setSessionId(info.session_id)
+      setSessionHydrated(!!info.session_id)
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Could not load the volume')
     } finally {
@@ -264,6 +377,17 @@ export default function App() {
       if (complete.status === 'failed') setError(complete.error || 'Batch acquisition failed')
     } catch (batchError) {
       setError(batchError instanceof Error ? batchError.message : 'Batch acquisition failed')
+    }
+  }
+
+  const cancelActiveBatch = async () => {
+    if (!activeBatch || !['queued', 'running'].includes(activeBatch.status)) return
+    try {
+      const cancelled = await cancelJob(activeBatch.id)
+      setActiveBatch(cancelled)
+      addOrUpdateJob(cancelled)
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : 'Could not cancel the batch')
     }
   }
 
@@ -459,7 +583,9 @@ export default function App() {
     savedViewDragCleanupRef.current = cleanup
   }
 
-  if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} onUpload={handleUpload} /></div>
+  if (sessionChecking) return <div className="app-shell session-checking"><span className="spinner" /><b>Checking for a previous session…</b></div>
+
+  if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} onUpload={handleUpload} />{pendingSession && <SessionRestoreDialog session={pendingSession} busy={sessionActionBusy} error={sessionError} onRestore={restorePreviousSession} onStartNew={() => void startNewSession()} />}</div>
 
   return (
     <div className="app-shell">
@@ -547,7 +673,7 @@ export default function App() {
         </main>
       )}
 
-      {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
+      {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} runtime={runtime} runtimeError={runtimeError} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => void cancelActiveBatch()} />}
       {workspace === 'results' && <ResultsWorkspace jobs={jobs} />}
       {workspace === 'settings' && <SettingsWorkspace preferences={preferences} runtime={runtime} runtimeError={runtimeError} runtimeRefreshing={runtimeRefreshing} volume={volume} jobCount={jobs.length} onChange={handlePreferencesChange} onRefreshRuntime={() => void refreshRuntime()} />}
       {savedViewDragGhost && createPortal(

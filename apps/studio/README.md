@@ -53,9 +53,17 @@ the installed commands are `pydrr` and `pydrr-studio`.
   A completed preview keeps its acquisition settings and is marked stale when
   the controls no longer match it.
 - **Batch** previews and executes an angle sweep with the active geometry and
-  the same patient rendering selected in Viewer.
+  the same patient rendering selected in Viewer. It applies the same runtime,
+  backend, physical-geometry, and source-placement checks as Acquire and shows
+  the estimated output size before running. A completed sweep can be downloaded
+  as the full ZIP package, its manifest, or a shell script that reproduces each
+  projection with the installed `pydrr` CLI. Configurable GIF and H.264 MP4
+  exports support frame rate, frame range, direction, resolution, and overlays;
+  they run as cancellable local jobs and can be resumed from the export dialog.
 - **Results** lists completed projections and downloadable archives from the
-  current local session.
+  current local session. Completed batches open in a cine viewer with frame and
+  angle navigation, playback, pan, zoom, fit controls, and the same shared
+  **Download sweep** menu used by Batch and result cards.
 - **Settings** stores application-wide appearance and compute defaults in the
   browser. It also reports the Python executable, detected compute devices,
   and installed core and accelerator packages used by the local server.
@@ -66,6 +74,12 @@ the same coordinate convention as the core projector.
 Volumes with invalid spacing or a non-orthonormal direction matrix can be
 inspected, but Studio blocks acquisition until their physical geometry is
 corrected.
+
+If the browser refreshes while the same local server is running, Studio detects
+the temporary session and asks whether it should be restored. Restoring returns
+to the previous workspace with its volume, controls, saved views, active-job
+monitoring, and results. Choosing **Start new** discards that temporary session;
+when no session exists, Studio goes directly to the landing page.
 
 The projection model can preserve PyDRR's original raw CT-value sum or convert
 HU to water-relative attenuation with `max(0, 1 + HU/1000)`. The latter is a
@@ -101,6 +115,12 @@ pnpm --dir apps/studio/frontend dev
 Vite serves the frontend on `http://127.0.0.1:5173` and proxies `/api` to the
 backend on port 8765.
 
+Run the frontend component and workflow checks with:
+
+```bash
+pnpm --dir apps/studio/frontend test
+```
+
 ## Production frontend assets
 
 `pnpm build` writes the frontend into `src/pydrr_studio/static`. The directory
@@ -110,4 +130,6 @@ Rebuild and commit the directory whenever the frontend source changes.
 
 Uploaded volumes and generated results are kept in a temporary local session
 directory. Download a result archive to retain its PNG, NumPy data, and JSON
-geometry metadata.
+geometry metadata. Manifests also record the `python-drr` and Studio versions,
+creation timestamp, input file size, and SHA-256 checksum. GIF and MP4 files are
+display-oriented derivatives; they do not replace the archive or manifest.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import shlex
@@ -22,7 +23,17 @@ from pydrr.geometry import DRRGeometry, make_orbit_pose
 from pydrr.visualization import normalize_image
 from pydrr.volume import Volume, load_volume_sitk, volume_center_world_xyz, voxel_zyx_to_world_xyz
 
-from .models import BatchSettings, JobInfo, RenderSettings, VolumeInfo, VoxelSample
+from .media_export import ExportCancelled, render_media_export
+from .models import (
+    BatchSettings,
+    JobInfo,
+    MediaExportInfo,
+    MediaExportSettings,
+    RenderSettings,
+    SessionSnapshot,
+    VolumeInfo,
+    VoxelSample,
+)
 from .runtime import RuntimeManager, runtime_manager
 
 
@@ -144,6 +155,9 @@ class VolumeRecord:
     filename: str
     path: Path
     volume: Volume
+    session_id: str = ""
+    file_size_bytes: int = 0
+    sha256: str = ""
 
 
 @dataclass
@@ -164,6 +178,25 @@ class JobRecord:
     metadata: dict | None = None
     cancel_requested: bool = False
     process: subprocess.Popen | None = field(default=None, repr=False)
+    session_id: str = ""
+
+
+@dataclass
+class MediaExportRecord:
+    id: str
+    job_id: str
+    session_id: str
+    settings: MediaExportSettings
+    filename: str
+    cache_key: str
+    status: str = "queued"
+    progress: float = 0.0
+    message: str = "Queued"
+    created_at: str = field(default_factory=_now)
+    completed_at: str | None = None
+    error: str | None = None
+    output_path: Path | None = None
+    cancel_requested: bool = False
 
 
 class StudioService:
@@ -172,12 +205,20 @@ class StudioService:
         self.runtimes = runtimes or runtime_manager
         self.volumes: dict[str, VolumeRecord] = {}
         self.jobs: dict[str, JobRecord] = {}
+        self.media_exports: dict[str, MediaExportRecord] = {}
+        self.active_session_id: str | None = None
+        self.active_volume_id: str | None = None
+        self.session_state: dict = {}
+        self.session_updated_at: str | None = None
         self.lock = threading.RLock()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pydrr-studio")
+        self.export_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pydrr-export")
 
     def close(self) -> None:
         with self.lock:
             processes = [job.process for job in self.jobs.values() if job.process is not None]
+            for media_export in self.media_exports.values():
+                media_export.cancel_requested = True
         for process in processes:
             if process.poll() is None:
                 process.terminate()
@@ -186,25 +227,48 @@ class StudioService:
                 except subprocess.TimeoutExpired:
                     process.kill()
         self.executor.shutdown(wait=False, cancel_futures=True)
+        self.export_executor.shutdown(wait=False, cancel_futures=True)
         shutil.rmtree(self.root, ignore_errors=True)
 
     def save_volume(self, source: BinaryIO, filename: str) -> VolumeInfo:
         volume_id = uuid.uuid4().hex
+        session_id = uuid.uuid4().hex
         safe_name = _safe_filename(filename)
         volume_dir = self.root / "volumes" / volume_id
         volume_dir.mkdir(parents=True)
         path = volume_dir / safe_name
+        digest = hashlib.sha256()
+        file_size_bytes = 0
         with path.open("wb") as destination:
-            shutil.copyfileobj(source, destination, length=1024 * 1024)
+            while chunk := source.read(1024 * 1024):
+                destination.write(chunk)
+                digest.update(chunk)
+                file_size_bytes += len(chunk)
         try:
             volume = load_volume_sitk(str(path))
             validate_viewable_volume_geometry(volume)
         except Exception:
             shutil.rmtree(volume_dir, ignore_errors=True)
             raise
-        record = VolumeRecord(id=volume_id, filename=safe_name, path=path, volume=volume)
+        record = VolumeRecord(
+            id=volume_id,
+            filename=safe_name,
+            path=path,
+            volume=volume,
+            session_id=session_id,
+            file_size_bytes=file_size_bytes,
+            sha256=digest.hexdigest(),
+        )
+        with self.lock:
+            previous_session_id = self.active_session_id
+        if previous_session_id:
+            self.discard_session(previous_session_id)
         with self.lock:
             self.volumes[volume_id] = record
+            self.active_session_id = session_id
+            self.active_volume_id = volume_id
+            self.session_state = {}
+            self.session_updated_at = _now()
         return self.volume_info(record)
 
     def volume_info(self, record: VolumeRecord) -> VolumeInfo:
@@ -223,7 +287,82 @@ class StudioService:
             center_world_xyz_mm=tuple(float(value) for value in center),
             geometry_valid=geometry_valid,
             orientation_warning=orientation_warning,
+            session_id=record.session_id or None,
         )
+
+    def session_snapshot(self) -> SessionSnapshot:
+        with self.lock:
+            session_id = self.active_session_id
+            volume_id = self.active_volume_id
+            updated_at = self.session_updated_at
+            state = dict(self.session_state)
+            jobs = [job for job in self.jobs.values() if session_id and job.session_id == session_id]
+        if not session_id or not volume_id:
+            return SessionSnapshot(active=False)
+        try:
+            volume = self.volume_info(self.get_volume(volume_id))
+        except KeyError:
+            return SessionSnapshot(active=False)
+        jobs.sort(key=lambda item: item.created_at, reverse=True)
+        return SessionSnapshot(
+            active=True,
+            session_id=session_id,
+            updated_at=updated_at,
+            volume=volume,
+            jobs=[self.job_info(job) for job in jobs],
+            state=state,
+        )
+
+    def update_session_state(self, session_id: str, state: dict) -> SessionSnapshot:
+        with self.lock:
+            if not self.active_session_id or session_id != self.active_session_id:
+                raise KeyError(session_id)
+            self.session_state = dict(state)
+            self.session_updated_at = _now()
+        return self.session_snapshot()
+
+    def discard_session(self, session_id: str) -> None:
+        with self.lock:
+            if not self.active_session_id or session_id != self.active_session_id:
+                raise KeyError(session_id)
+            active_jobs = [job for job in self.jobs.values() if job.session_id == session_id]
+            active_exports = [item for item in self.media_exports.values() if item.session_id == session_id]
+            self.active_session_id = None
+            self.active_volume_id = None
+            self.session_state = {}
+            self.session_updated_at = None
+            for job in active_jobs:
+                if job.status in {"queued", "running"}:
+                    job.cancel_requested = True
+                    job.message = "Cancellation requested"
+                    if job.process is not None and job.process.poll() is None:
+                        job.process.terminate()
+            for media_export in active_exports:
+                if media_export.status in {"queued", "running"}:
+                    media_export.cancel_requested = True
+                    media_export.message = "Cancellation requested"
+        self._purge_discarded_session(session_id)
+
+    def _purge_discarded_session(self, session_id: str) -> None:
+        with self.lock:
+            if self.active_session_id == session_id:
+                return
+            session_jobs = [job for job in self.jobs.values() if job.session_id == session_id]
+            session_exports = [item for item in self.media_exports.values() if item.session_id == session_id]
+            if any(job.status in {"queued", "running"} for job in session_jobs) or any(item.status in {"queued", "running"} for item in session_exports):
+                return
+            job_ids = [job.id for job in session_jobs]
+            volume_records = [record for record in self.volumes.values() if record.session_id == session_id]
+            for job_id in job_ids:
+                self.jobs.pop(job_id, None)
+            for item in session_exports:
+                self.media_exports.pop(item.id, None)
+            for record in volume_records:
+                self.volumes.pop(record.id, None)
+        for job_id in job_ids:
+            shutil.rmtree(self.root / "jobs" / job_id, ignore_errors=True)
+        for record in volume_records:
+            shutil.rmtree(record.path.parent, ignore_errors=True)
 
     def get_volume(self, volume_id: str) -> VolumeRecord:
         with self.lock:
@@ -363,19 +502,19 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
         return sampled.tobytes(order="C"), dimensions_xyz, spacing_xyz
 
     def create_render(self, settings: RenderSettings) -> JobRecord:
-        self._require_acquisition_geometry(settings.volume_id)
+        record = self._require_acquisition_geometry(settings.volume_id)
         python_executable, _ = self.runtimes.ensure_backend(settings.backend)
-        job = JobRecord(id=uuid.uuid4().hex, kind="render")
+        job = JobRecord(id=uuid.uuid4().hex, kind="render", session_id=record.session_id)
         with self.lock:
             self.jobs[job.id] = job
         self.executor.submit(self._run_render, job.id, settings, python_executable)
         return job
 
     def create_batch(self, settings: BatchSettings) -> JobRecord:
-        self._require_acquisition_geometry(settings.render.volume_id)
+        record = self._require_acquisition_geometry(settings.render.volume_id)
         python_executable, _ = self.runtimes.ensure_backend(settings.render.backend)
         count = int(math.floor((settings.end_angle_deg - settings.start_angle_deg) / settings.step_deg)) + 1
-        job = JobRecord(id=uuid.uuid4().hex, kind="batch", frame_count=count)
+        job = JobRecord(id=uuid.uuid4().hex, kind="batch", frame_count=count, session_id=record.session_id)
         with self.lock:
             self.jobs[job.id] = job
         self.executor.submit(self._run_batch, job.id, settings, python_executable)
@@ -416,6 +555,226 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
             metadata=job.metadata,
         )
 
+    def batch_frame_path(self, job_id: str, frame_index: int) -> Path:
+        job = self.get_job(job_id)
+        if job.kind != "batch":
+            raise ValueError("This job is not an angle sweep")
+        frame_paths = sorted((self.root / "jobs" / job.id / "frames").glob("*.png"))
+        if frame_index < 0 or frame_index >= len(frame_paths):
+            raise IndexError(frame_index)
+        return frame_paths[frame_index]
+
+    def batch_manifest_path(self, job_id: str) -> Path:
+        job = self.get_job(job_id)
+        if job.kind != "batch" or job.status != "completed":
+            raise ValueError("A completed angle sweep is required")
+        path = self.root / "jobs" / job.id / "manifest.json"
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        return path
+
+    def batch_acquisition_script(self, job_id: str) -> tuple[str, str]:
+        job = self.get_job(job_id)
+        if job.kind != "batch" or job.status != "completed" or not job.metadata:
+            raise ValueError("A completed angle sweep is required")
+        settings = RenderSettings.model_validate(job.metadata["render_settings"])
+        record = self.get_volume(settings.volume_id)
+        angles = [float(value) for value in job.metadata.get("angles_deg", [])]
+        if not angles:
+            raise ValueError("The sweep does not contain projection angles")
+        lower_name = record.filename.lower()
+        stem = record.filename[:-7] if lower_name.endswith(".nii.gz") else Path(record.filename).stem
+        stem = _safe_filename(stem) or "volume"
+        script_filename = f"{stem}_sweep.sh"
+        threshold = -900.0 if settings.hu_air_threshold is None else settings.hu_air_threshold
+        common = [
+            f"-res {settings.detector_row_spacing_mm:g} {settings.detector_col_spacing_mm:g}",
+            f"-size {settings.detector_height_px} {settings.detector_width_px}",
+            f"-scd {settings.sid_mm:g}",
+            f"--idd {settings.idd_mm:g}",
+            f"--isocenter-offset-mm {settings.translate_x_mm:g} {settings.translate_y_mm:g} {settings.translate_z_mm:g}",
+            f"--orbit-tilt-x={settings.orbit_tilt_x_deg:g}",
+            f"--orbit-tilt-y={settings.orbit_tilt_y_deg:g}",
+            f"--detector-roll={settings.detector_roll_deg:g}",
+            f"--detector-offset-mm {settings.detector_offset_u_mm:g} {settings.detector_offset_v_mm:g}",
+            f"--threshold={threshold:g}",
+            f"--projection-model {settings.projection_model.replace('_', '-')}",
+            f"--p-lo {settings.p_lo:g}",
+            f"--p-hi {settings.p_hi:g}",
+            f"--backend {settings.backend}",
+        ]
+        if settings.backend == "cpu":
+            common.append(f"--n-cores {settings.cpu_workers}")
+        if settings.invert:
+            common.append("--invert")
+        if not settings.clamp_negative_to_zero:
+            common.append("--no-clamp-negative")
+        flags = " \\\n    ".join(common)
+        angle_values = " ".join(f"{angle:g}" for angle in angles)
+        script = f'''#!/usr/bin/env bash
+set -euo pipefail
+
+# Generated by PyDRR Studio.
+# Usage: bash "{script_filename}" [input-volume] [output-directory]
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
+PYTHON_BIN="${{PYTHON_BIN:-{self.runtimes.python_executable}}}"
+INPUT_VOLUME="${{1:-$SCRIPT_DIR/{record.filename}}}"
+OUTPUT_DIR="${{2:-$SCRIPT_DIR/{stem}_sweep}}"
+ANGLES=({angle_values})
+mkdir -p "$OUTPUT_DIR"
+
+for index in "${{!ANGLES[@]}}"; do
+  angle="${{ANGLES[$index]}}"
+  printf -v frame_name 'frame_%04d.png' "$index"
+  "$PYTHON_BIN" -m pydrr "$INPUT_VOLUME" \\
+    {flags} \\
+    --projection-angle="$angle" \\
+    --output "$OUTPUT_DIR/$frame_name"
+done
+'''
+        return script_filename, script
+
+    def create_media_export(self, job_id: str, settings: MediaExportSettings) -> MediaExportRecord:
+        job = self.get_job(job_id)
+        if job.kind != "batch" or job.status != "completed":
+            raise ValueError("A completed angle sweep is required")
+        frame_paths = sorted((self.root / "jobs" / job.id / "frames").glob("*.png"))
+        if not frame_paths:
+            raise ValueError("The sweep does not contain display frames")
+        end_frame = len(frame_paths) - 1 if settings.end_frame is None else settings.end_frame
+        if settings.start_frame >= len(frame_paths) or end_frame >= len(frame_paths):
+            raise ValueError(f"Frame range must be between 1 and {len(frame_paths)}")
+        angles = [float(value) for value in (job.metadata or {}).get("angles_deg", [])]
+        if len(angles) != len(frame_paths):
+            raise ValueError("The sweep metadata does not match its display frames")
+        cache_key = hashlib.sha256(settings.model_dump_json().encode("utf-8")).hexdigest()
+        with self.lock:
+            existing = next((
+                item for item in self.media_exports.values()
+                if item.job_id == job_id and item.cache_key == cache_key and item.status in {"queued", "running", "completed"}
+            ), None)
+        if existing is not None:
+            return existing
+        volume_filename = str((job.metadata or {}).get("volume_filename") or "pydrr-sweep")
+        stem = volume_filename[:-7] if volume_filename.lower().endswith(".nii.gz") else Path(volume_filename).stem
+        extension = f".{settings.format}"
+        default_filename = f"{stem}_sweep{extension}"
+        requested_name = settings.filename or default_filename
+        requested = "".join(
+            character
+            for character in Path(requested_name).name
+            if character.isalnum() or character in {".", "-", "_"}
+        ) or default_filename
+        filename = requested if requested.lower().endswith(extension) else f"{requested}{extension}"
+        media_export = MediaExportRecord(
+            id=uuid.uuid4().hex,
+            job_id=job_id,
+            session_id=job.session_id,
+            settings=settings,
+            filename=filename,
+            cache_key=cache_key,
+        )
+        with self.lock:
+            self.media_exports[media_export.id] = media_export
+        self.export_executor.submit(self._run_media_export, media_export.id)
+        return media_export
+
+    def get_media_export(self, export_id: str) -> MediaExportRecord:
+        with self.lock:
+            media_export = self.media_exports.get(export_id)
+        if media_export is None:
+            raise KeyError(export_id)
+        return media_export
+
+    def list_media_exports(self, job_id: str) -> list[MediaExportRecord]:
+        self.get_job(job_id)
+        with self.lock:
+            exports = [item for item in self.media_exports.values() if item.job_id == job_id]
+        return sorted(exports, key=lambda item: item.created_at, reverse=True)
+
+    def cancel_media_export(self, export_id: str) -> MediaExportRecord:
+        media_export = self.get_media_export(export_id)
+        with self.lock:
+            if media_export.status in {"queued", "running"}:
+                media_export.cancel_requested = True
+                media_export.message = "Cancellation requested"
+        return media_export
+
+    def media_export_info(self, media_export: MediaExportRecord) -> MediaExportInfo:
+        return MediaExportInfo(
+            id=media_export.id,
+            job_id=media_export.job_id,
+            status=media_export.status,
+            progress=media_export.progress,
+            message=media_export.message,
+            format=media_export.settings.format,
+            filename=media_export.filename,
+            created_at=media_export.created_at,
+            completed_at=media_export.completed_at,
+            error=media_export.error,
+            download_url=f"/api/media-exports/{media_export.id}/download" if media_export.output_path else None,
+            settings=media_export.settings,
+        )
+
+    def _run_media_export(self, export_id: str) -> None:
+        media_export = self.get_media_export(export_id)
+        job = self.get_job(media_export.job_id)
+        frame_paths = sorted((self.root / "jobs" / job.id / "frames").glob("*.png"))
+        angles = [float(value) for value in (job.metadata or {}).get("angles_deg", [])]
+        output_path = self.root / "jobs" / job.id / "exports" / media_export.id / media_export.filename
+        with self.lock:
+            if media_export.cancel_requested:
+                media_export.status = "cancelled"
+                media_export.message = "Cancelled"
+                media_export.completed_at = _now()
+                cancelled_before_start = True
+            else:
+                cancelled_before_start = False
+                media_export.status = "running"
+                media_export.message = f"Preparing {media_export.settings.format.upper()}"
+        if cancelled_before_start:
+            if media_export.session_id:
+                self._purge_discarded_session(media_export.session_id)
+            return
+
+        def update(progress: float, message: str) -> None:
+            with self.lock:
+                media_export.progress = float(progress)
+                media_export.message = message
+
+        try:
+            render_media_export(
+                frame_paths,
+                angles,
+                media_export.settings,
+                output_path,
+                on_progress=update,
+                is_cancelled=lambda: media_export.cancel_requested,
+            )
+            with self.lock:
+                media_export.status = "completed"
+                media_export.progress = 1.0
+                media_export.message = f"{media_export.settings.format.upper()} ready"
+                media_export.completed_at = _now()
+                media_export.output_path = output_path
+        except ExportCancelled:
+            output_path.unlink(missing_ok=True)
+            with self.lock:
+                media_export.status = "cancelled"
+                media_export.message = "Cancelled"
+                media_export.completed_at = _now()
+        except Exception as exc:
+            output_path.unlink(missing_ok=True)
+            with self.lock:
+                media_export.status = "failed"
+                media_export.message = "Export failed"
+                media_export.error = f"{type(exc).__name__}: {exc}"
+                media_export.completed_at = _now()
+        finally:
+            if media_export.session_id:
+                self._purge_discarded_session(media_export.session_id)
+
     def _set_running(self, job: JobRecord, message: str) -> None:
         with self.lock:
             job.status = "running"
@@ -444,6 +803,8 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
                 "volume_id": record.id,
                 "volume_filename": record.filename,
                 "volume_path": str(record.path.resolve()),
+                "volume_sha256": record.sha256,
+                "volume_size_bytes": record.file_size_bytes,
                 "render": settings.model_dump(mode="json"),
             },
         )
@@ -463,6 +824,8 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
                 "volume_id": record.id,
                 "volume_filename": record.filename,
                 "volume_path": str(record.path.resolve()),
+                "volume_sha256": record.sha256,
+                "volume_size_bytes": record.file_size_bytes,
                 "batch": settings.model_dump(mode="json"),
             },
         )
@@ -568,3 +931,5 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
                 log_stream.close()
             with self.lock:
                 job.process = None
+            if job.session_id:
+                self._purge_discarded_session(job.session_id)

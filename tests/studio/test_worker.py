@@ -47,6 +47,8 @@ class BatchWorkerTests(unittest.TestCase):
                         {
                             "volume_id": "volume",
                             "volume_filename": "volume.nii.gz",
+                            "volume_sha256": "abc123",
+                            "volume_size_bytes": 2048,
                             "batch": settings.model_dump(mode="json"),
                         },
                         output_dir,
@@ -61,6 +63,10 @@ class BatchWorkerTests(unittest.TestCase):
                     self.assertEqual(any(name.endswith(".npy") for name in names), include_raw)
                     self.assertEqual(manifest["shared_normalization"], shared_normalization)
                     self.assertEqual(manifest["angles_deg"], [0.0])
+                    self.assertEqual(manifest["provenance"]["input"]["sha256"], "abc123")
+                    self.assertEqual(manifest["provenance"]["input"]["size_bytes"], 2048)
+                    self.assertIn("python_drr_version", manifest["provenance"])
+                    self.assertIn("created_at", manifest["provenance"])
 
 
 if __name__ == "__main__":

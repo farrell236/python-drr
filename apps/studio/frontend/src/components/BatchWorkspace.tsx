@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Box, Download, Orbit, Pause, Play, Square, Timer } from 'lucide-react'
+import { AlertTriangle, Box, Orbit, Pause, Play, Square, Timer } from 'lucide-react'
 import type { BatchSettings, JobInfo, RenderSettings, VolumeInfo, VolumeRenderSettings, WindowLevel } from '../types'
+import type { RuntimeInfo } from '../types'
+import { acquisitionReadiness } from '../acquisitionGeometry'
 import { AcquisitionScene } from './AcquisitionScene'
 import { blankFieldWarning, NumericInput } from './NumericInput'
+import { SweepDownloadMenu } from './SweepDownloadMenu'
 
 interface Props {
   volume: VolumeInfo
@@ -15,9 +18,17 @@ interface Props {
   onRun: () => void
   onValidationError: (message: string) => void
   onCancel: () => void
+  runtime: RuntimeInfo | null
+  runtimeError: string | null
 }
 
-export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering, batchSettings, job, onChange, onRun, onValidationError, onCancel }: Props) {
+function formatBytes(value: number) {
+  if (value < 1024 ** 2) return `${Math.max(1, Math.round(value / 1024))} KB`
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(value < 10 * 1024 ** 2 ? 1 : 0)} MB`
+  return `${(value / 1024 ** 3).toFixed(1)} GB`
+}
+
+export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering, batchSettings, job, onChange, onRun, onValidationError, onCancel, runtime, runtimeError }: Props) {
   const [blankFields, setBlankFields] = useState<Record<string, string>>({})
   const trackBlankField = useCallback((fieldId: string, label: string, blank: boolean) => {
     setBlankFields((current) => {
@@ -30,6 +41,10 @@ export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering,
     })
   }, [])
   const frameCount = Math.max(0, Math.floor((batchSettings.end_angle_deg - batchSettings.start_angle_deg) / batchSettings.step_deg) + 1)
+  const rangeValid = batchSettings.end_angle_deg >= batchSettings.start_angle_deg && batchSettings.step_deg > 0
+  const readiness = useMemo(() => acquisitionReadiness(volume, renderSettings, runtime), [renderSettings, runtime, volume])
+  const batchReady = readiness.ready && rangeValid && frameCount >= 1 && frameCount <= 720
+  const estimatedBytes = frameCount * renderSettings.detector_width_px * renderSettings.detector_height_px * (batchSettings.include_raw ? 5 : 1)
   const running = !!job && ['queued', 'running'].includes(job.status)
   const update = (values: Partial<BatchSettings>) => onChange({ ...batchSettings, ...values })
   const [previewAngle, setPreviewAngle] = useState(batchSettings.start_angle_deg)
@@ -86,6 +101,10 @@ export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering,
           <label><span><b>Include raw arrays</b><small>Save a Float32 NPY for every projection</small></span><input type="checkbox" checked={batchSettings.include_raw} onChange={(event) => update({ include_raw: event.target.checked })} /></label>
         </div>
         <div className="batch-estimate"><Timer /><span><small>Projection count</small><b>{frameCount} views</b></span></div>
+        <div className="batch-estimate"><Box /><span><small>Estimated output</small><b>about {formatBytes(estimatedBytes)}</b></span></div>
+        {!rangeValid && <div className="geometry-warning"><AlertTriangle />End angle must be greater than or equal to start angle.</div>}
+        {!readiness.ready && <div className="geometry-warning"><AlertTriangle />{runtimeError || readiness.message}</div>}
+        {readiness.metrics.warnings.map((warning) => <div className="geometry-warning" key={warning}><AlertTriangle />{warning}</div>)}
       </aside>
 
       <section className="trajectory-panel">
@@ -131,11 +150,11 @@ export function BatchWorkspace({ volume, renderSettings, windowLevel, rendering,
         <div><span className="eyebrow">Ready to acquire</span><h2>Angle sweep</h2><p>The export includes display PNGs, optional raw projections, and one JSON manifest with the geometry of every frame.</p></div>
         <dl><div><dt>Volume</dt><dd>{volume.filename}</dd></div><div><dt>Range</dt><dd>{batchSettings.start_angle_deg}° → {batchSettings.end_angle_deg}°</dd></div><div><dt>Step</dt><dd>{batchSettings.step_deg}°</dd></div><div><dt>Orbit plane</dt><dd>X {renderSettings.orbit_tilt_x_deg.toFixed(1)}° · Y {renderSettings.orbit_tilt_y_deg.toFixed(1)}°</dd></div><div><dt>Detector roll</dt><dd>{renderSettings.detector_roll_deg.toFixed(1)}°</dd></div><div><dt>Resolution</dt><dd>{renderSettings.detector_width_px} × {renderSettings.detector_height_px}</dd></div><div><dt>Frames</dt><dd>{frameCount}</dd></div></dl>
         <div className="batch-summary-spacer" />
-        {job?.download_url && <a className="button secondary full" href={job.download_url}><Download /> Download sweep</a>}
+        {job?.status === 'completed' && <SweepDownloadMenu job={job} full />}
         {running ? (
-          <button type="button" className="button danger full" onClick={onCancel}><Square /> Cancel after current frame</button>
+          <button type="button" className="button danger full" onClick={onCancel}><Square /> Cancel batch</button>
         ) : (
-          <button type="button" className="button primary full" disabled={frameCount < 1 || frameCount > 720} onClick={run}><Play /> Run {frameCount} projections</button>
+          <button type="button" className="button primary full" disabled={!batchReady} onClick={run}><Play /> Run {frameCount} projections</button>
         )}
         <span className="local-note"><Box /> Results stay on this machine until downloaded.</span>
       </aside>

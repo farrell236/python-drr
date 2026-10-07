@@ -23,6 +23,7 @@ dist/
 
 apps/studio/frontend/node_modules/
 apps/studio/frontend/dist/
+.pnpm-store/
 
 benchmark-results.json
 benchmark_outputs/

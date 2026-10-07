@@ -12,8 +12,13 @@ from .models import (
     BatchSettings,
     JobCreated,
     JobInfo,
+    MediaExportCreated,
+    MediaExportInfo,
+    MediaExportSettings,
     RenderSettings,
     RuntimeInfo,
+    SessionSnapshot,
+    SessionStateUpdate,
     VolumeInfo,
     VoxelSample,
 )
@@ -54,6 +59,28 @@ def runtime() -> RuntimeInfo:
         return runtime_manager.info()
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/session", response_model=SessionSnapshot)
+def session() -> SessionSnapshot:
+    return service.session_snapshot()
+
+
+@app.put("/api/session", response_model=SessionSnapshot)
+def update_session(update: SessionStateUpdate) -> SessionSnapshot:
+    try:
+        return service.update_session_state(update.session_id, update.state)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+
+
+@app.delete("/api/session/{session_id}", status_code=204)
+def discard_session(session_id: str) -> Response:
+    try:
+        service.discard_session(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+    return Response(status_code=204)
 
 
 @app.post("/api/volumes", response_model=VolumeInfo)
@@ -199,6 +226,107 @@ def job_image(job_id: str) -> FileResponse:
     if job.image_path is None or not job.image_path.exists():
         raise HTTPException(status_code=404, detail="No preview image is available")
     return FileResponse(job.image_path, media_type="image/png", filename=job.image_path.name)
+
+
+@app.get("/api/jobs/{job_id}/frames/{frame_index}")
+def batch_frame(job_id: str, frame_index: int) -> FileResponse:
+    try:
+        frame_path = service.batch_frame_path(job_id, frame_index)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found") from exc
+    except (IndexError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(frame_path, media_type="image/png", filename=frame_path.name)
+
+
+@app.get("/api/jobs/{job_id}/manifest")
+def batch_manifest(job_id: str) -> FileResponse:
+    try:
+        path = service.batch_manifest_path(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="No manifest is available") from exc
+    return FileResponse(path, media_type="application/json", filename="manifest.json")
+
+
+@app.get("/api/jobs/{job_id}/script")
+def batch_script(job_id: str) -> Response:
+    try:
+        filename, script = service.batch_acquisition_script(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(
+        content=script,
+        media_type="text/x-shellscript",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/api/jobs/{job_id}/media-exports", response_model=list[MediaExportInfo])
+def list_media_exports(job_id: str) -> list[MediaExportInfo]:
+    try:
+        return [service.media_export_info(item) for item in service.list_media_exports(job_id)]
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found") from exc
+
+
+@app.post(
+    "/api/jobs/{job_id}/media-exports",
+    response_model=MediaExportCreated,
+    status_code=202,
+)
+def create_media_export(job_id: str, settings: MediaExportSettings) -> MediaExportCreated:
+    try:
+        media_export = service.create_media_export(job_id, settings)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return MediaExportCreated(id=media_export.id, status=media_export.status)
+
+
+@app.get("/api/media-exports/{export_id}", response_model=MediaExportInfo)
+def get_media_export(export_id: str) -> MediaExportInfo:
+    try:
+        return service.media_export_info(service.get_media_export(export_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Media export not found") from exc
+
+
+@app.post("/api/media-exports/{export_id}/cancel", response_model=MediaExportInfo)
+def cancel_media_export(export_id: str) -> MediaExportInfo:
+    try:
+        return service.media_export_info(service.cancel_media_export(export_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Media export not found") from exc
+
+
+@app.get("/api/media-exports/{export_id}/download")
+def download_media_export(export_id: str) -> FileResponse:
+    try:
+        media_export = service.get_media_export(export_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Media export not found") from exc
+    if (
+        media_export.status != "completed"
+        or media_export.output_path is None
+        or not media_export.output_path.is_file()
+    ):
+        raise HTTPException(status_code=404, detail="Media export is not available")
+    media_type = "image/gif" if media_export.settings.format == "gif" else "video/mp4"
+    return FileResponse(
+        media_export.output_path,
+        media_type=media_type,
+        filename=media_export.filename,
+    )
 
 
 @app.get("/api/jobs/{job_id}/download")

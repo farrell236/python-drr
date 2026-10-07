@@ -17,6 +17,7 @@ class VolumeInfo(BaseModel):
     center_world_xyz_mm: tuple[float, float, float]
     geometry_valid: bool = True
     orientation_warning: str | None = None
+    session_id: str | None = None
 
 
 class VoxelSample(BaseModel):
@@ -27,6 +28,7 @@ class VoxelSample(BaseModel):
 
 BackendName = Literal["auto", "cpu", "cuda", "mps"]
 ProjectionModelName = Literal["raw", "relative_attenuation"]
+MediaExportFormat = Literal["gif", "mp4"]
 
 
 class BackendInfo(BaseModel):
@@ -130,3 +132,58 @@ class JobInfo(BaseModel):
     image_url: str | None = None
     download_url: str | None = None
     metadata: dict | None = None
+
+
+class MediaExportSettings(BaseModel):
+    format: MediaExportFormat
+    filename: str | None = Field(None, max_length=120)
+    fps: float = Field(12.0, ge=1.0, le=60.0)
+    start_frame: int = Field(0, ge=0)
+    end_frame: int | None = Field(None, ge=0)
+    direction: Literal["forward", "reverse", "ping-pong"] = "forward"
+    max_dimension_px: int | None = Field(1024, ge=128, le=2048)
+    overlay: Literal["none", "angle", "angle_and_frame"] = "none"
+    loop: bool = True
+    gif_quality: Literal["standard", "high"] = "standard"
+    dither: bool = True
+    mp4_quality: Literal["standard", "high", "maximum"] = "high"
+
+    @model_validator(mode="after")
+    def validate_frame_range(self) -> "MediaExportSettings":
+        if self.end_frame is not None and self.end_frame < self.start_frame:
+            raise ValueError("end_frame must be greater than or equal to start_frame")
+        return self
+
+
+class MediaExportCreated(BaseModel):
+    id: str
+    status: Literal["queued", "running", "completed"] = "queued"
+
+
+class MediaExportInfo(BaseModel):
+    id: str
+    job_id: str
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    progress: float
+    message: str
+    format: MediaExportFormat
+    filename: str
+    created_at: str
+    completed_at: str | None = None
+    error: str | None = None
+    download_url: str | None = None
+    settings: MediaExportSettings
+
+
+class SessionStateUpdate(BaseModel):
+    session_id: str
+    state: dict
+
+
+class SessionSnapshot(BaseModel):
+    active: bool
+    session_id: str | None = None
+    updated_at: str | None = None
+    volume: VolumeInfo | None = None
+    jobs: list[JobInfo] = Field(default_factory=list)
+    state: dict = Field(default_factory=dict)

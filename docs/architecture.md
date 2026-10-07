@@ -39,8 +39,9 @@ meaning of an acquisition.
 
 ## `pydrr_studio`
 
-The `studio` installation extra adds FastAPI, Uvicorn, and multipart upload
-support. The Studio package owns the loopback API, local uploads, background
+The `studio` installation extra adds FastAPI, Uvicorn, multipart upload,
+Pillow, and the bundled ImageIO FFmpeg runtime. The Studio package owns the
+loopback API, local uploads, background
 jobs, windowed multiplanar slice responses, result archives, and runtime
 diagnostics. It depends on `pydrr` for all geometry, backend discovery, and
 rendering behavior. Viewer crosshairs are converted between voxel ZYX and
@@ -52,6 +53,13 @@ blocks acquisition for invalid spacing, singular matrices, or non-orthonormal
 directions while keeping inspectable volumes available in the Viewer. Viewer volume-rendering state is owned by the application
 so its slice planes, transfer-function preset, shift, and opacity remain
 consistent in the Acquire and Batch geometry scenes.
+
+The service owns one active temporary Studio session. The frontend saves its
+workspace state through a debounced loopback endpoint, while uploaded volume
+data, jobs, and result files remain authoritative on the server. On page load,
+the API returns either no active session or a restorable snapshot; restoration
+is always an explicit user choice. Session replacement occurs only after a new
+volume has loaded successfully.
 
 The React/vtk.js source is maintained in `apps/studio/frontend`. Its production
 build is generated under `pydrr_studio/static` and included in Python wheels.
@@ -65,6 +73,12 @@ the CLI, Python API, and Studio see the same installed backends. Studio never
 changes Python environments or installs dependencies.
 The worker stores the complete submitted settings in result metadata; the
 frontend uses that immutable snapshot for preview orientation, captions, and
-stale-result detection.
+stale-result detection. Batch PNG frames are also exposed through bounded
+per-frame endpoints for the Results cine viewer. Completed sweeps expose direct
+ZIP, manifest, and generated shell-script endpoints. GIF and H.264 MP4 exports
+run in a separate single-worker queue with progress, cancellation, completed
+output reuse, and the same session cleanup boundary as their source batch.
+Result manifests include package versions, a UTC creation timestamp, and
+input-file size and SHA-256 provenance.
 
 The core package must never import `pydrr_studio`.

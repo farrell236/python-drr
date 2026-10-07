@@ -143,6 +143,19 @@ presets, detector orientation labels, exact numeric geometry controls, detector
 coverage metrics, and warnings for source placement or clipping. Every preview
 retains the settings that produced it and is marked stale after controls change.
 The preview supports pan, zoom, fit, and cancellation of an active render.
+Batch uses the same runtime, geometry, and detector-coverage checks before an
+angle sweep can start. Completed sweeps can be inspected as a playable,
+scrollable projection sequence in Results. The shared **Download sweep** menu
+provides the complete ZIP package, its JSON manifest, a ready-to-run shell
+script, and configurable GIF or H.264 MP4 presentation exports. Media exports
+support frame ranges, playback direction, frame rate, resolution, and optional
+angle/frame overlays; the ZIP remains the authoritative scientific output.
+
+Refreshing the browser while the local server is still running presents an
+explicit option to restore the uploaded volume, viewer and acquisition state,
+saved views, active jobs, and results. Restarting the server clears this
+temporary session. Result manifests include the package version, creation
+time, input size, and SHA-256 checksum in addition to the acquisition geometry.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation

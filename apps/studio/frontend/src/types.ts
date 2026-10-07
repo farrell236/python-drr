@@ -52,6 +52,7 @@ export interface VolumeInfo {
   center_world_xyz_mm: [number, number, number]
   geometry_valid: boolean
   orientation_warning: string | null
+  session_id: string | null
 }
 
 export interface VoxelSample {
@@ -113,10 +114,64 @@ export interface JobInfo {
   metadata: Record<string, unknown> | null
 }
 
+export type MediaExportFormat = 'gif' | 'mp4'
+
+export interface MediaExportSettings {
+  format: MediaExportFormat
+  filename: string | null
+  fps: number
+  start_frame: number
+  end_frame: number | null
+  direction: 'forward' | 'reverse' | 'ping-pong'
+  max_dimension_px: number | null
+  overlay: 'none' | 'angle' | 'angle_and_frame'
+  loop: boolean
+  gif_quality: 'standard' | 'high'
+  dither: boolean
+  mp4_quality: 'standard' | 'high' | 'maximum'
+}
+
+export interface MediaExportInfo {
+  id: string
+  job_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  progress: number
+  message: string
+  format: MediaExportFormat
+  filename: string
+  created_at: string
+  completed_at: string | null
+  error: string | null
+  download_url: string | null
+  settings: MediaExportSettings
+}
+
 export interface SavedView {
   id: string
   name: string
   settings: RenderSettings
+}
+
+export interface StudioSessionState {
+  workspace: Workspace
+  settings: RenderSettings
+  windowLevel: WindowLevel
+  volumeRenderState: VolumeRenderState
+  batchSettings: BatchSettings
+  savedViews: SavedView[]
+  selectedSavedViewId: string | null
+  activeRenderId: string | null
+  renderedSettings: RenderSettings | null
+  activeBatchId: string | null
+}
+
+export interface SessionSnapshot {
+  active: boolean
+  session_id: string | null
+  updated_at: string | null
+  volume: VolumeInfo | null
+  jobs: JobInfo[]
+  state: Partial<StudioSessionState>
 }
 
 export interface BackendInfo {

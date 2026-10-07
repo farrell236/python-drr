@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import sys
 import traceback
 import zipfile
+from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +22,28 @@ from pydrr.visualization import normalize_image
 from pydrr.volume import Volume, load_volume_sitk, volume_center_world_xyz
 
 from .models import BatchSettings, RenderSettings
+
+
+def _package_version() -> str:
+    try:
+        return version("python-drr")
+    except PackageNotFoundError:
+        return "development"
+
+
+def _provenance(spec: dict[str, Any]) -> dict[str, Any]:
+    package_version = _package_version()
+    return {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "python_drr_version": package_version,
+        "studio_version": package_version,
+        "python_version": platform.python_version(),
+        "input": {
+            "filename": spec["volume_filename"],
+            "size_bytes": int(spec.get("volume_size_bytes") or 0),
+            "sha256": str(spec.get("volume_sha256") or ""),
+        },
+    }
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -109,12 +134,14 @@ def _metadata(
     geometry: DRRGeometry,
     iso_center: np.ndarray,
     drr: np.ndarray,
+    provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     orbit_frame = make_orbit_frame(settings.orbit_tilt_x_deg, settings.orbit_tilt_y_deg)
     return {
         "geometry_convention": "pydrr-orbit-frame-v2",
         "volume_id": volume_id,
         "volume_filename": filename,
+        "provenance": provenance or {},
         "settings": settings.model_dump(),
         "compute": {
             "requested_backend": settings.backend,
@@ -152,7 +179,15 @@ def _run_render(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[
     normalized = normalize_image(drr, invert=settings.invert, p_lo=settings.p_lo, p_hi=settings.p_hi)
     imageio.imwrite(png_path, (normalized * 255).astype(np.uint8))
     np.save(raw_path, drr.astype(np.float32))
-    metadata = _metadata(spec["volume_id"], spec["volume_filename"], settings, geometry, iso_center, drr)
+    metadata = _metadata(
+        spec["volume_id"],
+        spec["volume_filename"],
+        settings,
+        geometry,
+        iso_center,
+        drr,
+        _provenance(spec),
+    )
     manifest_path = output_dir / "manifest.json"
     _write_json(manifest_path, metadata)
     archive_path = output_dir / "pydrr-projection.zip"
@@ -189,6 +224,7 @@ def _normalize_batch_frame(
 
 def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[str, Any]:
     settings = BatchSettings.model_validate(spec["batch"])
+    provenance = _provenance(spec)
     resolved_backend, prepared_volume = _prepare_backend_volume(
         volume,
         settings.render.backend,
@@ -236,6 +272,7 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
                 geometry,
                 iso_center,
                 drr,
+                provenance,
             ))
             first_image = first_image or png_path
 
@@ -254,7 +291,15 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
         stem = f"frame_{index:04d}_angle_{angle:+08.3f}"
         png_path = frames_dir / f"{stem}.png"
         imageio.imwrite(png_path, (normalized * 255).astype(np.uint8))
-        frames_metadata.append(_metadata(spec["volume_id"], spec["volume_filename"], frame_settings, geometry, iso_center, drr))
+        frames_metadata.append(_metadata(
+            spec["volume_id"],
+            spec["volume_filename"],
+            frame_settings,
+            geometry,
+            iso_center,
+            drr,
+            provenance,
+        ))
         first_image = first_image or png_path
         if not settings.include_raw:
             del drr
@@ -263,6 +308,7 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
     manifest = {
         "kind": "angle_sweep",
         "geometry_convention": "pydrr-orbit-frame-v2",
+        "provenance": provenance,
         "volume": _volume_info(volume, spec["volume_id"], spec["volume_filename"]),
         "angles_deg": angles,
         "shared_normalization": settings.shared_normalization,
@@ -281,7 +327,13 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
         "message": f"Completed {len(angles)} projections",
         "image_path": str(first_image) if first_image else None,
         "archive_path": str(archive_path),
-        "metadata": {"angles_deg": angles, "shared_normalization": settings.shared_normalization},
+        "metadata": {
+            "angles_deg": angles,
+            "shared_normalization": settings.shared_normalization,
+            "render_settings": settings.render.model_dump(mode="json"),
+            "volume_filename": spec["volume_filename"],
+            "provenance": provenance,
+        },
         "current_angle_deg": angles[-1],
     }
 

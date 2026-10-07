@@ -1,4 +1,4 @@
-import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, VolumeInfo, VolumeRenderData, VoxelSample, VoxelZYX } from './types'
+import type { BatchSettings, JobInfo, MediaExportInfo, MediaExportSettings, RenderSettings, RuntimeInfo, SessionSnapshot, StudioSessionState, VolumeInfo, VolumeRenderData, VoxelSample, VoxelZYX } from './types'
 
 export function apiUrl(path: string) {
   return path
@@ -65,6 +65,31 @@ export async function uploadVolume(file: File): Promise<VolumeInfo> {
 
 export function getRuntime(): Promise<RuntimeInfo> {
   return request('/api/runtime', { signal: AbortSignal.timeout(15000) })
+}
+
+export function getSession(): Promise<SessionSnapshot> {
+  return request('/api/session')
+}
+
+export function saveSession(sessionId: string, state: StudioSessionState): Promise<SessionSnapshot> {
+  return request('/api/session', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, state }),
+  })
+}
+
+export async function discardSession(sessionId: string): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(apiUrl(`/api/session/${encodeURIComponent(sessionId)}`), { method: 'DELETE' })
+  } catch (error) {
+    throw new Error('Could not reach the local PyDRR service. Restart pydrr-studio and try again.', { cause: error })
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error(errorDetail(payload.detail, `Request failed with status ${response.status}`))
+  }
 }
 
 export function volumeSliceUrl(volumeId: string, axis: string, index: number, windowCenter: number, windowWidth: number) {
@@ -140,6 +165,66 @@ export async function createBatch(settings: BatchSettings): Promise<{ id: string
 
 export async function getJob(id: string): Promise<JobInfo> {
   return withResourceUrls(await request(`/api/jobs/${id}`))
+}
+
+export function batchFrameUrl(id: string, frameIndex: number) {
+  return apiUrl(`/api/jobs/${encodeURIComponent(id)}/frames/${frameIndex}`)
+}
+
+export function batchManifestUrl(id: string) {
+  return apiUrl(`/api/jobs/${encodeURIComponent(id)}/manifest`)
+}
+
+export function batchScriptUrl(id: string) {
+  return apiUrl(`/api/jobs/${encodeURIComponent(id)}/script`)
+}
+
+function withMediaExportUrl(mediaExport: MediaExportInfo): MediaExportInfo {
+  return {
+    ...mediaExport,
+    download_url: mediaExport.download_url ? apiUrl(mediaExport.download_url) : null,
+  }
+}
+
+export async function createMediaExport(id: string, settings: MediaExportSettings): Promise<{ id: string }> {
+  return request(`/api/jobs/${encodeURIComponent(id)}/media-exports`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+}
+
+export async function listMediaExports(id: string): Promise<MediaExportInfo[]> {
+  const exports = await request<MediaExportInfo[]>(`/api/jobs/${encodeURIComponent(id)}/media-exports`)
+  return exports.map(withMediaExportUrl)
+}
+
+export async function getMediaExport(id: string): Promise<MediaExportInfo> {
+  return withMediaExportUrl(await request(`/api/media-exports/${encodeURIComponent(id)}`))
+}
+
+export async function cancelMediaExport(id: string): Promise<MediaExportInfo> {
+  return withMediaExportUrl(await request(`/api/media-exports/${encodeURIComponent(id)}/cancel`, { method: 'POST' }))
+}
+
+export async function waitForMediaExport(
+  id: string,
+  onUpdate: (mediaExport: MediaExportInfo) => void,
+  signal?: AbortSignal,
+): Promise<MediaExportInfo> {
+  for (;;) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    const mediaExport = await getMediaExport(id)
+    onUpdate(mediaExport)
+    if (['completed', 'failed', 'cancelled'].includes(mediaExport.status)) return mediaExport
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, 500)
+      signal?.addEventListener('abort', () => {
+        window.clearTimeout(timer)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }, { once: true })
+    })
+  }
 }
 
 export async function cancelJob(id: string): Promise<JobInfo> {
