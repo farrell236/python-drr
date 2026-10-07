@@ -1,6 +1,6 @@
-import { AlertTriangle, Box, Layers3, MoreHorizontal, Orbit, Plus, ScanLine, Settings2, Trash2, Upload, Zap } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { AlertTriangle, Box, Layers3, Orbit, Plus, ScanLine, Settings2, Trash2, Upload, Zap } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { cancelJob, createBatch, createRender, getRuntime, uploadVolume, waitForJob } from './api'
 import { AcquisitionScene } from './components/AcquisitionScene'
@@ -42,6 +42,15 @@ const DEFAULT_SETTINGS: RenderSettings = {
   cpu_workers: 1,
 }
 
+interface SavedViewDragGhost {
+  name: string
+  detail: string
+  width: number
+  height: number
+  x: number
+  y: number
+}
+
 function renderDefaults(preferences: StudioPreferences, volumeId = ''): RenderSettings {
   return {
     ...DEFAULT_SETTINGS,
@@ -71,18 +80,21 @@ export default function App() {
   const [activeBatch, setActiveBatch] = useState<JobInfo | null>(null)
   const [jobs, setJobs] = useState<JobInfo[]>([])
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
-  const [savedViewMenu, setSavedViewMenu] = useState<{ viewId: string; left: number; top: number } | null>(null)
   const [deletedSavedView, setDeletedSavedView] = useState<{ view: SavedView; index: number } | null>(null)
   const [draggedSavedViewId, setDraggedSavedViewId] = useState<string | null>(null)
   const [dragOverDelete, setDragOverDelete] = useState(false)
+  const [savedViewDragGhost, setSavedViewDragGhost] = useState<SavedViewDragGhost | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [runtimeRefreshing, setRuntimeRefreshing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const savedViewDeckRef = useRef<HTMLDivElement>(null)
   const savedViewsRef = useRef<SavedView[]>([])
   const savedViewDragCleanupRef = useRef<(() => void) | null>(null)
+  const savedViewDragGhostRef = useRef<HTMLDivElement>(null)
+  const savedViewRectsRef = useRef<Map<string, DOMRect> | null>(null)
   const suppressSavedViewClickRef = useRef(false)
 
   useEffect(() => {
@@ -109,7 +121,6 @@ export default function App() {
   }, [preferences])
 
   useEffect(() => {
-    setSavedViewMenu(null)
     savedViewDragCleanupRef.current?.()
   }, [workspace])
 
@@ -118,6 +129,29 @@ export default function App() {
   }, [savedViews])
 
   useEffect(() => () => savedViewDragCleanupRef.current?.(), [])
+
+  useLayoutEffect(() => {
+    const previousRects = savedViewRectsRef.current
+    const deck = savedViewDeckRef.current
+    if (!previousRects || !deck || !draggedSavedViewId) return
+
+    deck.querySelectorAll<HTMLElement>('[data-saved-view-id]').forEach((card) => {
+      const viewId = card.dataset.savedViewId
+      if (!viewId || viewId === draggedSavedViewId) return
+      const previous = previousRects.get(viewId)
+      if (!previous) return
+      const current = card.getBoundingClientRect()
+      const deltaX = previous.left - current.left
+      const deltaY = previous.top - current.top
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return
+      card.getAnimations().forEach((animation) => animation.cancel())
+      card.animate(
+        [{ transform: `translate3d(${deltaX}px, ${deltaY}px, 0)` }, { transform: 'translate3d(0, 0, 0)' }],
+        { duration: 190, easing: 'cubic-bezier(.2, .78, .22, 1)' },
+      )
+    })
+    savedViewRectsRef.current = null
+  }, [savedViews, draggedSavedViewId])
 
   useEffect(() => {
     if (!deletedSavedView) return
@@ -168,7 +202,6 @@ export default function App() {
       setActiveBatch(null)
       setSavedViews([])
       savedViewsRef.current = []
-      setSavedViewMenu(null)
       setDeletedSavedView(null)
       setWindowLevel(defaultWindowLevel(info))
       setVolumeRenderState(defaultVolumeRenderState())
@@ -236,15 +269,6 @@ export default function App() {
     setSavedViews(next)
   }
 
-  const openSavedViewMenu = (event: ReactMouseEvent<HTMLButtonElement>, viewId: string) => {
-    event.stopPropagation()
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const menuWidth = 148
-    const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, bounds.right - menuWidth))
-    const top = bounds.bottom + 54 > window.innerHeight ? bounds.top - 48 : bounds.bottom + 6
-    setSavedViewMenu({ viewId, left, top })
-  }
-
   const deleteSavedView = (viewId: string) => {
     const current = savedViewsRef.current
     const index = current.findIndex((view) => view.id === viewId)
@@ -253,7 +277,6 @@ export default function App() {
     const next = current.filter((view) => view.id !== viewId)
     savedViewsRef.current = next
     setSavedViews(next)
-    setSavedViewMenu(null)
   }
 
   const undoDeleteSavedView = () => {
@@ -276,6 +299,10 @@ export default function App() {
     const startX = event.clientX
     const startY = event.clientY
     const savedViewDeck = event.currentTarget.closest<HTMLElement>('.saved-view-deck')
+    const draggedCard = event.currentTarget.closest<HTMLElement>('[data-saved-view-id]')
+    const draggedCardBounds = draggedCard?.getBoundingClientRect()
+    const grabOffsetX = draggedCardBounds ? startX - draggedCardBounds.left : 0
+    const grabOffsetY = draggedCardBounds ? startY - draggedCardBounds.top : 0
     const initialScrollLeft = savedViewDeck?.scrollLeft || 0
     let lastX = startX
     let lastY = startY
@@ -283,6 +310,20 @@ export default function App() {
     let scrolling = false
     let overDelete = false
     let cleanedUp = false
+
+    const positionGhost = (clientX: number, clientY: number) => {
+      const x = clientX - grabOffsetX
+      const y = clientY - grabOffsetY
+      if (savedViewDragGhostRef.current) savedViewDragGhostRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`
+      return { x, y }
+    }
+
+    const captureSavedViewRects = () => {
+      if (!savedViewDeck) return
+      savedViewRectsRef.current = new Map(
+        Array.from(savedViewDeck.querySelectorAll<HTMLElement>('[data-saved-view-id]')).map((card) => [card.dataset.savedViewId || '', card.getBoundingClientRect()]),
+      )
+    }
 
     const updateDragTarget = (clientX: number, clientY: number) => {
       const element = document.elementFromPoint(clientX, clientY)
@@ -313,6 +354,7 @@ export default function App() {
       if (fromIndex < insertIndex) insertIndex -= 1
       if (insertIndex === fromIndex) return false
 
+      captureSavedViewRects()
       const next = [...current]
       const [dragged] = next.splice(fromIndex, 1)
       next.splice(insertIndex, 0, dragged)
@@ -332,13 +374,25 @@ export default function App() {
       savedViewDragCleanupRef.current = null
       setDraggedSavedViewId(null)
       setDragOverDelete(false)
+      setSavedViewDragGhost(null)
+      savedViewRectsRef.current = null
     }
 
     const activate = () => {
       if (active || cleanedUp) return
       active = true
-      setSavedViewMenu(null)
       setDraggedSavedViewId(viewId)
+      const view = savedViewsRef.current.find((item) => item.id === viewId)
+      if (view && draggedCardBounds) {
+        const position = positionGhost(lastX, lastY)
+        setSavedViewDragGhost({
+          name: view.name,
+          detail: `${view.settings.projection_angle_deg.toFixed(1)}° · ${view.settings.detector_width_px}²`,
+          width: draggedCardBounds.width,
+          height: draggedCardBounds.height,
+          ...position,
+        })
+      }
       document.documentElement.classList.add('saved-view-dragging')
       updateDragTarget(lastX, lastY)
     }
@@ -363,6 +417,7 @@ export default function App() {
         return
       }
       pointerEvent.preventDefault()
+      positionGhost(lastX, lastY)
       updateDragTarget(lastX, lastY)
     }
 
@@ -391,8 +446,6 @@ export default function App() {
     window.addEventListener('pointercancel', cancelDrag)
     savedViewDragCleanupRef.current = cleanup
   }
-
-  const menuSavedView = savedViewMenu ? savedViews.find((view) => view.id === savedViewMenu.viewId) : null
 
   if (!volume) return <div className="app-shell"><UploadPanel busy={uploading} error={error} runtime={runtime} runtimeError={runtimeError} onUpload={handleUpload} /></div>
 
@@ -446,27 +499,31 @@ export default function App() {
                 >
                   {draggedSavedViewId ? <><Trash2 /> Delete view</> : <>Save view <Plus /></>}
                 </button>
-                {savedViews.length > 0 && <div className="saved-view-deck" aria-label="Saved acquisition views">
+                {savedViews.length > 0 && <div className="saved-view-deck" aria-label="Saved acquisition views" ref={savedViewDeckRef}>
                   {savedViews.map((view) => (
                     <div className={`saved-view-card${draggedSavedViewId === view.id ? ' dragging' : ''}`} data-saved-view-id={view.id} key={view.id}>
                       <button
                         type="button"
                         className="saved-view"
-                        title="Hold and drag to reorder"
+                        title="Hold and drag to reorder; drag to Delete view to remove"
                         onPointerDown={(event) => beginSavedViewDrag(event, view.id)}
                         onContextMenu={(event) => event.preventDefault()}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Delete' || event.key === 'Backspace') {
+                            event.preventDefault()
+                            deleteSavedView(view.id)
+                          }
+                        }}
                         onClick={() => {
                           if (suppressSavedViewClickRef.current) {
                             suppressSavedViewClickRef.current = false
                             return
                           }
                           setSettings(view.settings)
-                          setSavedViewMenu(null)
                         }}
                       >
                         <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
                       </button>
-                      <button type="button" className="saved-view-more" aria-label={`More options for ${view.name}`} title={`More options for ${view.name}`} onClick={(event) => openSavedViewMenu(event, view.id)}><MoreHorizontal /></button>
                     </div>
                   ))}
                 </div>}
@@ -481,11 +538,15 @@ export default function App() {
       {workspace === 'batch' && <BatchWorkspace volume={volume} renderSettings={activeSettings} windowLevel={windowLevel} rendering={volumeRendering} batchSettings={{ ...batchSettings, render: activeSettings }} job={activeBatch} onChange={setBatchSettings} onRun={() => void runBatch()} onValidationError={setError} onCancel={() => activeBatch && void cancelJob(activeBatch.id).then(setActiveBatch)} />}
       {workspace === 'results' && <ResultsWorkspace jobs={jobs} />}
       {workspace === 'settings' && <SettingsWorkspace preferences={preferences} runtime={runtime} runtimeError={runtimeError} runtimeRefreshing={runtimeRefreshing} volume={volume} jobCount={jobs.length} onChange={handlePreferencesChange} onRefreshRuntime={() => void refreshRuntime()} />}
-      {menuSavedView && savedViewMenu && createPortal(
-        <div className="saved-view-menu-layer" onPointerDown={() => setSavedViewMenu(null)}>
-          <div className="saved-view-menu" role="menu" aria-label={`${menuSavedView.name} actions`} style={{ left: savedViewMenu.left, top: savedViewMenu.top }} onPointerDown={(event) => event.stopPropagation()}>
-            <button type="button" role="menuitem" onClick={() => deleteSavedView(menuSavedView.id)}><Trash2 /> Delete view</button>
-          </div>
+      {savedViewDragGhost && createPortal(
+        <div
+          aria-hidden="true"
+          className="saved-view-drag-ghost"
+          ref={savedViewDragGhostRef}
+          style={{ width: savedViewDragGhost.width, height: savedViewDragGhost.height, transform: `translate3d(${savedViewDragGhost.x}px, ${savedViewDragGhost.y}px, 0)` }}
+        >
+          <b>{savedViewDragGhost.name}</b>
+          <small>{savedViewDragGhost.detail}</small>
         </div>,
         document.body,
       )}
