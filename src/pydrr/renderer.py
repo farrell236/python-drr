@@ -6,9 +6,11 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 from tqdm import tqdm
 
+from .attenuation import validate_projection_model
+from .backends.cpu import _ray_integral_siddon_jacobs_image
 from .geometry import DRRGeometry, detector_pixel_centers_world, make_orbit_pose
 from .backends import ray_integral_siddon_jacobs, resolve_backend
-from .volume import Volume, volume_center_world_xyz
+from .volume import Volume, volume_center_world_xyz, world_xyz_to_image_physical_xyz
 
 ProjectorFn = Callable[..., float]
 
@@ -18,6 +20,19 @@ _MP_SOURCE_MM: Optional[np.ndarray] = None
 _MP_DET_PTS: Optional[np.ndarray] = None
 _MP_PROJECTOR_FN: Optional[ProjectorFn] = None
 _MP_PROJECTOR_KWARGS: Optional[Dict] = None
+
+
+def _prepare_backend_volume(vol: Volume, backend: str) -> tuple[str, object | None]:
+    resolved = resolve_backend(backend)
+    if resolved == "cuda":
+        from .backends.cuda import upload_volume_to_gpu
+
+        return resolved, upload_volume_to_gpu(vol)
+    if resolved == "mps":
+        from .backends.mps import _prepare_volume_torch
+
+        return resolved, _prepare_volume_torch(vol, "mps")
+    return resolved, None
 
 
 def _init_row_worker(vol: Volume, source_mm: np.ndarray, det_pts: np.ndarray, projector_fn: ProjectorFn, projector_kwargs: Dict) -> None:
@@ -54,6 +69,7 @@ def generate_drr(
     n_cores: Optional[int] = None,
     mp_chunksize: int = 1,
     backend: str = "cpu",
+    _prepared_volume: object | None = None,
 ) -> np.ndarray:
     if projector_kwargs is None:
         projector_kwargs = {}
@@ -73,6 +89,7 @@ def generate_drr(
             hu_air_threshold=projector_kwargs.get("hu_air_threshold", -900.0),
             clamp_negative_to_zero=projector_kwargs.get("clamp_negative_to_zero", True),
             projection_model=projector_kwargs.get("projection_model", "raw"),
+            prepared_volume=_prepared_volume,
         )
 
     if backend == "mps":
@@ -88,12 +105,25 @@ def generate_drr(
             hu_air_threshold=projector_kwargs.get("hu_air_threshold", -900.0),
             clamp_negative_to_zero=projector_kwargs.get("clamp_negative_to_zero", True),
             projection_model=projector_kwargs.get("projection_model", "raw"),
+            prepared_volume=_prepared_volume,
         )
 
     if mp_chunksize < 1:
         raise ValueError("mp_chunksize must be >= 1")
 
     det_pts = detector_pixel_centers_world(geom)
+    source_mm = geom.source_mm
+    effective_projector = projector_fn
+    if projector_fn is ray_integral_siddon_jacobs:
+        source_mm = world_xyz_to_image_physical_xyz(vol, source_mm)
+        det_pts = world_xyz_to_image_physical_xyz(vol, det_pts)
+        projector_kwargs = {
+            **projector_kwargs,
+            "projection_model": validate_projection_model(
+                projector_kwargs.get("projection_model", "raw")
+            ),
+        }
+        effective_projector = _ray_integral_siddon_jacobs_image
     H, W, _ = det_pts.shape
     drr = np.zeros((H, W), dtype=np.float32)
 
@@ -106,9 +136,9 @@ def generate_drr(
 
         for r in row_iter:
             for c in range(W):
-                drr[r, c] = projector_fn(
+                drr[r, c] = effective_projector(
                     vol=vol,
-                    start_xyz=geom.source_mm,
+                    start_xyz=source_mm,
                     end_xyz=det_pts[r, c],
                     **projector_kwargs,
                 )
@@ -118,7 +148,7 @@ def generate_drr(
     with mp.Pool(
         processes=n_cores,
         initializer=_init_row_worker,
-        initargs=(vol, geom.source_mm, det_pts, projector_fn, projector_kwargs),
+        initargs=(vol, source_mm, det_pts, effective_projector, projector_kwargs),
     ) as pool:
         results_iter = pool.imap(_render_row, range(H), chunksize=mp_chunksize)
         if show_progress:
@@ -149,6 +179,7 @@ def generate_orbit_drrs(
         projector_kwargs = {}
 
     iso_center = volume_center_world_xyz(vol)
+    resolved_backend, prepared_volume = _prepare_backend_volume(vol, backend)
     drrs = []
     angle_iter = tqdm(angles_deg, desc="Orbit DRRs") if show_progress else angles_deg
 
@@ -172,7 +203,8 @@ def generate_orbit_drrs(
             show_progress=False,
             n_cores=n_cores,
             mp_chunksize=mp_chunksize,
-            backend=backend,
+            backend=resolved_backend,
+            _prepared_volume=prepared_volume,
         )
         drrs.append(drr)
 

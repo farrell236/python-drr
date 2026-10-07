@@ -16,6 +16,7 @@ class BackendStatus:
     version: str | None = None
 
 
+@lru_cache(maxsize=1)
 def _cuda_status() -> BackendStatus:
     if sys.platform == "darwin":
         return BackendStatus(
@@ -61,6 +62,7 @@ def _cuda_status() -> BackendStatus:
     )
 
 
+@lru_cache(maxsize=1)
 def _mps_status() -> BackendStatus:
     if sys.platform != "darwin" or platform.machine().lower() not in {"arm64", "arm64e"}:
         return BackendStatus(
@@ -116,14 +118,16 @@ def backend_statuses() -> tuple[BackendStatus, ...]:
 
 def resolve_backend(requested: str) -> str:
     normalized = str(requested or "auto").strip().lower()
-    statuses = {status.id: status for status in backend_statuses()}
+    if normalized == "cpu":
+        return "cpu"
+    if normalized not in {"auto", "cuda", "mps"}:
+        raise ValueError("backend must be 'auto', 'cpu', 'cuda', or 'mps'")
     if normalized == "auto":
+        statuses = {status.id: status for status in backend_statuses()}
         for candidate in ("cuda", "mps", "cpu"):
             if statuses[candidate].available:
                 return candidate
-    if normalized not in statuses:
-        raise ValueError("backend must be 'auto', 'cpu', 'cuda', or 'mps'")
-    status = statuses[normalized]
+    status = _cuda_status() if normalized == "cuda" else _mps_status()
     if not status.available:
         raise RuntimeError(f"{status.label} is unavailable. {status.detail}")
     return normalized

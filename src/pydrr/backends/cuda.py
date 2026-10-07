@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional
+from functools import lru_cache
+from typing import Any, Optional
 
 import numpy as np
 
@@ -20,7 +21,7 @@ def _require_cupy():
     return cp
 
 
-def upload_volume_to_gpu(vol: Volume):
+def upload_volume_to_gpu(vol: Volume) -> dict[str, Any]:
     cp = _require_cupy()
     return {
         "data": cp.asarray(vol.data, dtype=cp.float32),
@@ -251,6 +252,12 @@ void siddon_drr_kernel(
 '''
 
 
+@lru_cache(maxsize=1)
+def _cuda_kernel():
+    cp = _require_cupy()
+    return cp.RawKernel(_CUDA_SRC, "siddon_drr_kernel")
+
+
 def render_drr_cuda(
     vol: Volume,
     geom: DRRGeometry,
@@ -258,12 +265,13 @@ def render_drr_cuda(
     clamp_negative_to_zero: bool = True,
     projection_model: str = "raw",
     stream=None,
+    prepared_volume: dict[str, Any] | None = None,
 ) -> np.ndarray:
     cp = _require_cupy()
     projection_model = validate_projection_model(projection_model)
-    kernel = cp.RawKernel(_CUDA_SRC, "siddon_drr_kernel")
+    kernel = _cuda_kernel()
 
-    gpu_vol = upload_volume_to_gpu(vol)
+    gpu_vol = prepared_volume or upload_volume_to_gpu(vol)
     det_pts = world_xyz_to_image_physical_xyz(
         vol,
         detector_pixel_centers_world(geom),

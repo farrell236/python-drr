@@ -14,7 +14,7 @@ import numpy as np
 
 from pydrr.backends import resolve_backend
 from pydrr.geometry import DRRGeometry, make_orbit_frame, make_orbit_pose
-from pydrr.renderer import generate_drr
+from pydrr.renderer import _prepare_backend_volume, generate_drr
 from pydrr.visualization import normalize_image
 from pydrr.volume import Volume, load_volume_sitk, volume_center_world_xyz
 
@@ -56,9 +56,15 @@ def _build_geometry(volume: Volume, settings: RenderSettings) -> tuple[DRRGeomet
     return geometry, iso_center.astype(np.float32)
 
 
-def _render_array(volume: Volume, settings: RenderSettings) -> tuple[np.ndarray, DRRGeometry, np.ndarray]:
+def _render_array(
+    volume: Volume,
+    settings: RenderSettings,
+    *,
+    resolved_backend: str | None = None,
+    prepared_volume: object | None = None,
+) -> tuple[np.ndarray, DRRGeometry, np.ndarray]:
     geometry, iso_center = _build_geometry(volume, settings)
-    backend = resolve_backend(settings.backend)
+    backend = resolved_backend or resolve_backend(settings.backend)
     workers = settings.cpu_workers if backend == "cpu" and settings.cpu_workers > 1 else None
     drr = generate_drr(
         vol=volume,
@@ -71,6 +77,7 @@ def _render_array(volume: Volume, settings: RenderSettings) -> tuple[np.ndarray,
         show_progress=False,
         n_cores=workers,
         backend=backend,
+        _prepared_volume=prepared_volume,
     )
     return drr, geometry, iso_center
 
@@ -163,8 +170,29 @@ def _run_render(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[
     }
 
 
+def _normalize_batch_frame(
+    drr: np.ndarray,
+    settings: RenderSettings,
+    shared_lo: float | None = None,
+    shared_hi: float | None = None,
+) -> np.ndarray:
+    if shared_lo is None or shared_hi is None or shared_hi <= shared_lo:
+        return normalize_image(
+            drr,
+            invert=settings.invert,
+            p_lo=settings.p_lo,
+            p_hi=settings.p_hi,
+        )
+    normalized = np.clip((drr - shared_lo) / (shared_hi - shared_lo), 0.0, 1.0)
+    return 1.0 - normalized if settings.invert else normalized
+
+
 def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[str, Any]:
     settings = BatchSettings.model_validate(spec["batch"])
+    resolved_backend, prepared_volume = _prepare_backend_volume(
+        volume,
+        settings.render.backend,
+    )
     frames_dir = output_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
     angles = np.arange(
@@ -176,18 +204,40 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
     raw_paths: list[Path] = []
     percentile_samples: list[np.ndarray] = []
     geometries: list[tuple[RenderSettings, DRRGeometry, np.ndarray]] = []
+    frames_metadata: list[dict[str, Any]] = []
+    first_image: Path | None = None
     for index, angle in enumerate(angles):
         _progress(output_dir, index / len(angles), f"Rendering frame {index + 1} of {len(angles)}", angle)
         frame_settings = settings.render.model_copy(update={"projection_angle_deg": angle})
-        drr, geometry, iso_center = _render_array(volume, frame_settings)
+        drr, geometry, iso_center = _render_array(
+            volume,
+            frame_settings,
+            resolved_backend=resolved_backend,
+            prepared_volume=prepared_volume,
+        )
         stem = f"frame_{index:04d}_angle_{angle:+08.3f}"
         raw_path = frames_dir / f"{stem}.npy"
-        np.save(raw_path, drr.astype(np.float32))
-        raw_paths.append(raw_path)
         if settings.shared_normalization:
+            np.save(raw_path, drr.astype(np.float32))
+            raw_paths.append(raw_path)
             stride = max(1, drr.size // 4096)
             percentile_samples.append(drr.reshape(-1)[::stride])
-        geometries.append((frame_settings, geometry, iso_center))
+            geometries.append((frame_settings, geometry, iso_center))
+        else:
+            if settings.include_raw:
+                np.save(raw_path, drr.astype(np.float32))
+            png_path = frames_dir / f"{stem}.png"
+            normalized = _normalize_batch_frame(drr, frame_settings)
+            imageio.imwrite(png_path, (normalized * 255).astype(np.uint8))
+            frames_metadata.append(_metadata(
+                spec["volume_id"],
+                spec["volume_filename"],
+                frame_settings,
+                geometry,
+                iso_center,
+                drr,
+            ))
+            first_image = first_image or png_path
 
     if settings.shared_normalization:
         sample = np.concatenate(percentile_samples)
@@ -197,17 +247,10 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
         shared_lo = shared_hi = None
 
     _progress(output_dir, 0.92, "Normalizing and packaging projections", angles[-1])
-    frames_metadata: list[dict[str, Any]] = []
-    first_image: Path | None = None
     for index, (angle, raw_path, geometry_info) in enumerate(zip(angles, raw_paths, geometries)):
         drr = np.load(raw_path, mmap_mode="r")
         frame_settings, geometry, iso_center = geometry_info
-        if shared_lo is None or shared_hi is None or shared_hi <= shared_lo:
-            normalized = normalize_image(drr, invert=frame_settings.invert, p_lo=frame_settings.p_lo, p_hi=frame_settings.p_hi)
-        else:
-            normalized = np.clip((drr - shared_lo) / (shared_hi - shared_lo), 0.0, 1.0)
-            if frame_settings.invert:
-                normalized = 1.0 - normalized
+        normalized = _normalize_batch_frame(drr, frame_settings, shared_lo, shared_hi)
         stem = f"frame_{index:04d}_angle_{angle:+08.3f}"
         png_path = frames_dir / f"{stem}.png"
         imageio.imwrite(png_path, (normalized * 255).astype(np.uint8))

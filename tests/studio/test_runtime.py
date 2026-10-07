@@ -2,6 +2,7 @@ import sys
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -65,6 +66,7 @@ class StudioRuntimeTests(unittest.TestCase):
                     start_angle_deg=0,
                     end_angle_deg=10,
                     step_deg=10,
+                    shared_normalization=False,
                     include_raw=False,
                 ))
                 deadline = time.time() + 30
@@ -73,6 +75,10 @@ class StudioRuntimeTests(unittest.TestCase):
                 self.assertEqual(batch.status, "completed", batch.error)
                 self.assertTrue(batch.archive_path and batch.archive_path.is_file())
                 self.assertEqual(batch.metadata["angles_deg"], [0.0, 10.0])
+                with zipfile.ZipFile(batch.archive_path) as archive:
+                    names = archive.namelist()
+                self.assertEqual(sum(name.endswith(".png") for name in names), 2)
+                self.assertFalse(any(name.endswith(".npy") for name in names))
         finally:
             service.close()
             manager.close()

@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 from ..volume import Volume, world_xyz_to_image_physical_xyz
-from ..attenuation import validate_projection_model
+from ..attenuation import ProjectionModel, validate_projection_model
 
 
 def ray_box_intersection(
@@ -35,34 +35,22 @@ def ray_box_intersection(
     return tmin, tmax
 
 
-def ray_integral_siddon_jacobs(
+def _ray_integral_siddon_jacobs_image(
     vol: Volume,
     start_xyz: np.ndarray,
     end_xyz: np.ndarray,
     hu_air_threshold: Optional[float] = -900.0,
     clamp_negative_to_zero: bool = True,
-    projection_model: str = "raw",
+    projection_model: ProjectionModel = "raw",
     eps: float = 1e-8,
 ) -> float:
-    """Siddon/Jacobs-style line integral through a voxel grid.
-
-    Notes:
-        - Rays are transformed from world coordinates into the image's
-          axis-aligned physical frame, so the SimpleITK direction is honored.
-        - ``raw`` uses voxel values directly as attenuation surrogates.
-        - ``relative_attenuation`` maps CT HU to water-relative attenuation.
-        - Air can be suppressed with `hu_air_threshold`.
-    """
-    projection_model = validate_projection_model(projection_model)
+    """Integrate a ray whose endpoints are already in image coordinates."""
     data = vol.data
     nz, ny, nx = data.shape
 
     spacing_zyx = np.asarray(vol.spacing_zyx, dtype=np.float64)
     sz, sy, sx = float(spacing_zyx[0]), float(spacing_zyx[1]), float(spacing_zyx[2])
     ox = oy = oz = 0.0
-
-    start_xyz = world_xyz_to_image_physical_xyz(vol, start_xyz)
-    end_xyz = world_xyz_to_image_physical_xyz(vol, end_xyz)
 
     ray = end_xyz - start_xyz
     ray_length = np.linalg.norm(ray)
@@ -187,3 +175,29 @@ def ray_integral_siddon_jacobs(
             t_max_z += t_delta_z
 
     return float(integral)
+
+
+def ray_integral_siddon_jacobs(
+    vol: Volume,
+    start_xyz: np.ndarray,
+    end_xyz: np.ndarray,
+    hu_air_threshold: Optional[float] = -900.0,
+    clamp_negative_to_zero: bool = True,
+    projection_model: str = "raw",
+    eps: float = 1e-8,
+) -> float:
+    """Siddon/Jacobs-style line integral through a voxel grid.
+
+    Rays are accepted in world coordinates and transformed into the image's
+    axis-aligned physical frame, so the SimpleITK direction is honored.
+    """
+    model = validate_projection_model(projection_model)
+    return _ray_integral_siddon_jacobs_image(
+        vol=vol,
+        start_xyz=world_xyz_to_image_physical_xyz(vol, start_xyz),
+        end_xyz=world_xyz_to_image_physical_xyz(vol, end_xyz),
+        hu_air_threshold=hu_air_threshold,
+        clamp_negative_to_zero=clamp_negative_to_zero,
+        projection_model=model,
+        eps=eps,
+    )

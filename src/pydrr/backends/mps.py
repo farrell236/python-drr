@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Optional
 
 import numpy as np
 
@@ -25,6 +26,42 @@ def _require_mps():
     return torch
 
 
+@dataclass(frozen=True)
+class _TorchVolumeState:
+    device: str
+    data: Any
+    shape_zyx: tuple[int, int, int]
+    spacing_zyx: tuple[float, float, float]
+    box_max: Any
+    spacing: Any
+    planes: tuple[Any, Any, Any]
+
+
+def _prepare_volume_torch(vol: Volume, device: str) -> _TorchVolumeState:
+    import torch
+
+    tensor_device = torch.device(device)
+    nz, ny, nx = (int(value) for value in vol.data.shape)
+    sz, sy, sx = (float(value) for value in vol.spacing_zyx)
+    return _TorchVolumeState(
+        device=str(tensor_device),
+        data=torch.as_tensor(vol.data, dtype=torch.float32, device=tensor_device),
+        shape_zyx=(nz, ny, nx),
+        spacing_zyx=(sz, sy, sx),
+        box_max=torch.tensor(
+            [nx * sx, ny * sy, nz * sz],
+            dtype=torch.float32,
+            device=tensor_device,
+        ),
+        spacing=torch.tensor([sx, sy, sz], dtype=torch.float32, device=tensor_device),
+        planes=(
+            torch.arange(1, nx, dtype=torch.float32, device=tensor_device) * sx,
+            torch.arange(1, ny, dtype=torch.float32, device=tensor_device) * sy,
+            torch.arange(1, nz, dtype=torch.float32, device=tensor_device) * sz,
+        ),
+    )
+
+
 def _render_drr_torch(
     vol: Volume,
     geom: DRRGeometry,
@@ -34,6 +71,7 @@ def _render_drr_torch(
     clamp_negative_to_zero: bool = True,
     projection_model: str = "raw",
     candidate_budget: int = 1_500_000,
+    prepared_volume: _TorchVolumeState | None = None,
 ) -> np.ndarray:
     """Exact voxel-boundary ray integration using batched tensor operations.
 
@@ -46,11 +84,14 @@ def _render_drr_torch(
     projection_model = validate_projection_model(projection_model)
 
     tensor_device = torch.device(device)
-    data = torch.as_tensor(vol.data, dtype=torch.float32, device=tensor_device)
-    nz, ny, nx = (int(value) for value in vol.data.shape)
-    sz, sy, sx = (float(value) for value in vol.spacing_zyx)
-    box_max = torch.tensor([nx * sx, ny * sy, nz * sz], dtype=torch.float32, device=tensor_device)
-    spacing = torch.tensor([sx, sy, sz], dtype=torch.float32, device=tensor_device)
+    prepared = prepared_volume or _prepare_volume_torch(vol, device)
+    if prepared.device != str(tensor_device):
+        raise ValueError("Prepared volume device does not match the render device")
+    data = prepared.data
+    nz, ny, nx = prepared.shape_zyx
+    sz, sy, sx = prepared.spacing_zyx
+    box_max = prepared.box_max
+    spacing = prepared.spacing
 
     detector_points = world_xyz_to_image_physical_xyz(
         vol, detector_pixel_centers_world(geom)
@@ -65,11 +106,7 @@ def _render_drr_torch(
         device=tensor_device,
     )
 
-    planes = (
-        torch.arange(1, nx, dtype=torch.float32, device=tensor_device) * sx,
-        torch.arange(1, ny, dtype=torch.float32, device=tensor_device) * sy,
-        torch.arange(1, nz, dtype=torch.float32, device=tensor_device) * sz,
-    )
+    planes = prepared.planes
     candidate_count = nx + ny + nz - 1
     batch_size = max(64, min(4096, candidate_budget // max(candidate_count, 1)))
     output = torch.zeros((endpoints.shape[0],), dtype=torch.float32, device=tensor_device)
@@ -139,6 +176,7 @@ def render_drr_mps(
     hu_air_threshold: Optional[float] = -900.0,
     clamp_negative_to_zero: bool = True,
     projection_model: str = "raw",
+    prepared_volume: _TorchVolumeState | None = None,
 ) -> np.ndarray:
     _require_mps()
     return _render_drr_torch(
@@ -148,4 +186,5 @@ def render_drr_mps(
         hu_air_threshold=hu_air_threshold,
         clamp_negative_to_zero=clamp_negative_to_zero,
         projection_model=projection_model,
+        prepared_volume=prepared_volume,
     )

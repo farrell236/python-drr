@@ -88,7 +88,11 @@ def volume_slice(
         raise HTTPException(status_code=404, detail="Volume not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Response(content=content, media_type="image/png")
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @app.get("/api/volumes/{volume_id}/render-data")
