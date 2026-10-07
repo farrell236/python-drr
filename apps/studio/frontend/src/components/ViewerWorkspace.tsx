@@ -4,6 +4,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as Re
 import { volumeSliceUrl } from '../api'
 import type { RenderSettings, SliceAxis, VolumeInfo, VoxelZYX, WindowLevel } from '../types'
 import { clampVoxel, orientationLabels, planeGeometry, planePointToVoxel, voxelToPlanePoint, voxelToWorld, worldToVoxel } from '../viewerGeometry'
+import { Volume3DViewport } from './Volume3DViewport'
 
 interface ViewerProps {
   volume: VolumeInfo
@@ -202,6 +203,7 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
         {(['axial', 'coronal', 'sagittal'] as SliceAxis[]).map((axis) => (
           <SliceViewport key={axis} axis={axis} volume={volume} voxel={voxel} windowLevel={windowLevel} onVoxelChange={setVoxel} />
         ))}
+        <Volume3DViewport volume={volume} voxel={voxel} />
       </div>
 
       <aside className="viewer-controls">

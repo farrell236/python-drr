@@ -98,7 +98,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .viewer-workspace { height: calc(100vh - 68px); min-height: 620px; display: grid; grid-template-columns: minmax(0, 1fr) 286px; }
 .warning-banner + .viewer-workspace, .global-error + .viewer-workspace { height: calc(100vh - 108px); }
-.mpr-grid { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; overflow: hidden; }
+.mpr-grid { min-width: 0; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; overflow: hidden; }
 .mpr-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: #070a0d; box-shadow: 0 5px 18px rgba(25, 34, 46, .05); }
 .mpr-panel > header { min-height: 43px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 11px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--panel); }
 .mpr-panel > header span { display: flex; align-items: center; gap: 6px; font-size: 11px; }
@@ -128,6 +128,24 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mpr-panel > footer { min-height: 57px; display: grid; gap: 4px; padding: 7px 10px; color: var(--muted); background: var(--panel); }
 .mpr-panel > footer input { width: 100%; accent-color: var(--blue); }
 .mpr-panel > footer span { overflow: hidden; font-size: 8px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-3d-stage { min-height: 0; flex: 1; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 42%, #1c2a34 0%, #0b1116 66%, #05080a 100%); }
+.viewer-3d-canvas { position: absolute; inset: 0; }
+.viewer-3d-canvas canvas { display: block; }
+.viewer-3d-toolbar { position: absolute; right: 7px; top: 7px; z-index: 2; }
+.viewer-3d-toolbar button { min-height: 31px; display: flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid rgba(168, 185, 199, .22); border-radius: 7px; color: #dbe5ec; background: rgba(10, 15, 19, .78); box-shadow: 0 2px 8px rgba(0,0,0,.24); backdrop-filter: blur(6px); font-size: 9px; cursor: pointer; }
+.viewer-3d-toolbar button:hover { background: rgba(32, 43, 52, .92); }
+.viewer-3d-toolbar svg { width: 13px; height: 13px; }
+.viewer-3d-axis-key { position: absolute; left: 9px; bottom: 8px; z-index: 2; display: flex; gap: 7px; padding: 5px 7px; border: 1px solid rgba(168, 185, 199, .18); border-radius: 6px; color: #dbe5ec; background: rgba(7, 11, 15, .65); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; pointer-events: none; }
+.viewer-3d-axis-key .axis-x { color: #ec6a67; }
+.viewer-3d-axis-key .axis-y { color: #5ed99a; }
+.viewer-3d-axis-key .axis-z { color: #73a7f3; }
+.mpr-panel > footer.viewer-3d-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.viewer-3d-legend { display: flex; align-items: center; gap: 8px; }
+.viewer-3d-legend span { display: inline-flex; align-items: center; gap: 4px; overflow: visible; }
+.viewer-3d-legend span::before { width: 7px; height: 7px; border-radius: 2px; background: currentColor; content: ''; }
+.viewer-3d-legend .axial { color: #ef484f; }
+.viewer-3d-legend .coronal { color: #4ac777; }
+.viewer-3d-legend .sagittal { color: #f4c438; }
 .viewer-controls { min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 15px; overflow-y: auto; border-left: 1px solid var(--line); background: var(--panel); }
 .viewer-controls > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .viewer-controls > header > span { display: grid; gap: 2px; }
@@ -358,7 +376,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .upload-card { min-height: 300px; }
   .workbench { height: auto; display: flex; flex-direction: column; }
   .viewer-workspace { height: auto; display: flex; flex-direction: column; }
-  .mpr-grid { grid-template-columns: 1fr; overflow: visible; }
+  .mpr-grid { grid-template-columns: 1fr; grid-template-rows: none; overflow: visible; }
   .mpr-panel { min-height: 480px; }
   .viewer-controls { overflow: visible; border: 0; border-top: 1px solid var(--line); }
   .workbench-canvas { overflow: visible; }

@@ -111,11 +111,12 @@ default browser. Use `pydrr-studio --no-browser` to start the service without
 opening a browser. NIfTI volumes and generated results stay on the local
 machine.
 
-Studio opens uploaded volumes in a linked axial, coronal, and sagittal viewer.
-The Viewer provides physical orientation labels, CT window presets, slice
-navigation, pan and zoom controls, and click-to-position crosshairs. The linked
-crosshair is the acquisition isocenter used by the Acquire and Batch
-workspaces.
+Studio opens uploaded volumes in a Slicer-style 2 × 2 viewer with linked axial,
+coronal, and sagittal views plus an orbitable 3D context. The Viewer provides
+physical orientation labels, CT window presets, slice navigation, pan and zoom
+controls, and click-to-position crosshairs. The 3D view shows the volume bounds,
+active slice planes, and isocenter. The linked crosshair is the acquisition
+isocenter used by the Acquire and Batch workspaces.
 
 The installable distribution is named `python-drr`; the Python import and CLI
 remain `pydrr`. See the [Studio README](apps/studio/README.md) for installation
