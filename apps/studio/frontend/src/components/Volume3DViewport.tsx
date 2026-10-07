@@ -206,11 +206,8 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
 
   return (
     <section className="mpr-panel viewer-3d-panel">
-      <header>
-        <span><Box /> 3D</span>
-        <small>Linked slice context</small>
-      </header>
       <div className="viewer-3d-stage">
+        <span className="viewport-label three-dimensional"><Box /> 3D</span>
         <div ref={containerRef} className="viewer-3d-canvas" aria-label="Interactive three-dimensional volume and slice plane context" />
         <div className="viewer-3d-toolbar" role="toolbar" aria-label="Three-dimensional viewer controls">
           <button type="button" onClick={() => resetCameraRef.current()} title="Reset to the default three-quarter view"><RotateCcw /> Reset</button>

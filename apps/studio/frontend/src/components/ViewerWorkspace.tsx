@@ -105,10 +105,8 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
 
   return (
     <section className="mpr-panel">
-      <header>
-        <span><ScanLine /> {AXIS_NAMES[axis]}</span>
-      </header>
       <div className="slice-stage">
+        <span className={`viewport-label ${axis}`}><ScanLine /> {AXIS_NAMES[axis]}</span>
         <svg
           className={`slice-content ${drag.current?.moved ? 'panning' : ''}`}
           viewBox={`0 0 ${geometry.width} ${geometry.height}`}

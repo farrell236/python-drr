@@ -37,8 +37,9 @@ the installed commands are `pydrr` and `pydrr-studio`.
   acquisition isocenter. Physical orientation labels, CT window presets, slice
   navigation, pan, zoom, and reset controls are included. Slice positions and
   their linked sliders are grouped in the right sidebar so the four viewports
-  retain more image area. Clicking a slice positions the shared acquisition
-  isocenter.
+  retain more image area. The four views form one continuous 2 × 2 viewing
+  surface with compact in-image labels. Clicking a slice positions the shared
+  acquisition isocenter.
 - **Acquire** configures and renders a single projection from that isocenter.
 - **Batch** previews and executes an angle sweep with the active geometry.
 - **Results** lists completed projections and downloadable archives from the
