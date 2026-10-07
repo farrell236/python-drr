@@ -291,20 +291,25 @@ export default function App() {
               <ProjectionViewer job={activeRender} settings={activeSettings} renderedSettings={renderedSettings} />
             </div>
             <section className="acquisition-tray">
-              <div className="tray-title"><span className="eyebrow">Acquisition tray</span>{savedViews.length > 0 && <span className="tray-count" aria-label={`${savedViews.length} saved ${savedViews.length === 1 ? 'view' : 'views'}`}>{savedViews.length}</span>}</div>
-              <button type="button" className="save-view" onClick={saveView}><Plus /> Save view</button>
-              {savedViews.length > 0 && <div className="saved-view-deck" aria-label="Saved acquisition views">
-                {savedViews.map((view, index) => (
-                  <div className="saved-view-card" key={view.id} style={{ zIndex: savedViews.length - index }}>
-                    <button type="button" className="saved-view" onClick={() => { setSettings(view.settings); setSavedViewMenu(null) }}>
-                      <span className="saved-thumb">{view.imageUrl ? <img src={view.imageUrl} alt="" /> : <ScanLine />}</span>
-                      <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
-                    </button>
-                    <button type="button" className="saved-view-more" aria-label={`More options for ${view.name}`} title={`More options for ${view.name}`} onClick={(event) => openSavedViewMenu(event, view.id)}><MoreHorizontal /></button>
-                  </div>
-                ))}
-              </div>}
-              <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
+              <div className="tray-title">
+                <span className="eyebrow">Acquisition tray</span>
+                {savedViews.length > 0 && <span className="tray-count">{savedViews.length} {savedViews.length === 1 ? 'view' : 'views'}</span>}
+              </div>
+              <div className="tray-content">
+                <button type="button" className="save-view" onClick={saveView}>Save view <Plus /></button>
+                {savedViews.length > 0 && <div className="saved-view-deck" aria-label="Saved acquisition views">
+                  {savedViews.map((view) => (
+                    <div className="saved-view-card" key={view.id}>
+                      <button type="button" className="saved-view" onClick={() => { setSettings(view.settings); setSavedViewMenu(null) }}>
+                        <span className="saved-thumb">{view.imageUrl ? <img src={view.imageUrl} alt="" /> : <ScanLine />}</span>
+                        <span><b>{view.name}</b><small>{view.settings.projection_angle_deg.toFixed(1)}° · {view.settings.detector_width_px}²</small></span>
+                      </button>
+                      <button type="button" className="saved-view-more" aria-label={`More options for ${view.name}`} title={`More options for ${view.name}`} onClick={(event) => openSavedViewMenu(event, view.id)}><MoreHorizontal /></button>
+                    </div>
+                  ))}
+                </div>}
+                <button type="button" className="button secondary tray-batch" onClick={() => setWorkspace('batch')}><Orbit /> Build angle sweep</button>
+              </div>
             </section>
           </div>
           <ParameterPanel settings={activeSettings} busy={busy} runtime={runtime} runtimeError={runtimeError} onChange={setSettings} onRender={() => void renderProjection()} onCancel={() => void cancelActiveRender()} onValidationError={setError} onReset={() => setSettings(renderDefaults(preferences, volume.id))} volumeFilename={volume.filename} volume={volume} />
