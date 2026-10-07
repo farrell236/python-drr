@@ -107,65 +107,42 @@ behavior and emit a deprecation warning.
 
 ## Studio
 
-PyDRR Studio is a local browser application. Install the Studio extra and start
-it from the Python environment that will perform the rendering:
+Install the Studio extra and start the local browser application:
 
 ```bash
-python -m pip install ".[studio]"
+python -m pip install "python-drr[studio] @ git+https://github.com/farrell236/python-drr.git"
 pydrr-studio
 ```
 
-The command starts the loopback server and opens `http://127.0.0.1:8765` in the
-default browser. Use `pydrr-studio --no-browser` to start the service without
-opening a browser. NIfTI volumes and generated results stay on the local
-machine.
+<p align="center">
+  <img src="docs/assets/studio-viewer.jpg" width="100%" alt="PyDRR Studio linked CT Viewer with axial, coronal, sagittal, and 3D panes" />
+</p>
 
-Studio opens uploaded volumes in a Slicer-style 2 × 2 viewer with linked axial,
-coronal, and sagittal views plus an orbitable 3D context. The Viewer provides
-physical orientation labels, CT window presets, slice navigation, cursor-aware
-zoom, panning, temporary pane maximization, linked crosshair navigation, exact
-world/voxel isocenter entry, and a live crosshair HU readout. Dragging within one slice scrolls
-the other two views while the active image remains fixed. The 3D view can show
-the current images on the active slice planes or render the volume with
-adjustable bone, soft-tissue, and skin presets. Volume rendering uses a bounded
-display copy and does not alter the source image used for DRR generation. The
-linked crosshair is the acquisition isocenter used by the Acquire and Batch
-workspaces. Volumes with invalid physical spacing or a non-orthonormal direction
-matrix remain viewable, but acquisition is blocked instead of silently using
-incorrect geometry. The active slice-plane or volume-rendering appearance, including
-manual shift and opacity adjustments, carries into both geometry previews.
-Studio Settings provides persistent system/light/dark appearance choices,
-compute defaults, and a detailed view of the active Python environment and
-available rendering backends.
+### Features
 
-Acquire provides anatomically correct AP, PA, left-lateral, and right-lateral
-presets, detector orientation labels, exact numeric geometry controls, detector
-coverage metrics, and warnings for source placement or clipping. Every preview
-retains the settings that produced it and is marked stale after controls change.
-The preview supports pan, zoom, fit, and cancellation of an active render.
-Batch uses the same runtime, geometry, and detector-coverage checks before an
-angle sweep can start. Completed sweeps can be inspected as a playable,
-scrollable projection sequence in Results. The shared **Download sweep** menu
-provides the complete ZIP package, its JSON manifest, a ready-to-run shell
-script, and configurable GIF or H.264 MP4 presentation exports. Media exports
-support frame ranges, playback direction, frame rate, resolution, and optional
-angle/frame overlays; the ZIP remains the authoritative scientific output.
+- **Local by default:** runs at `http://127.0.0.1:8765`; uploaded NIfTI volumes
+  and generated results stay on the user's machine.
+- **Linked 2 × 2 Viewer:** axial, coronal, and sagittal slices with physical
+  orientation labels, synchronized crosshairs, HU sampling, CT windowing, and
+  an orbitable 3D context.
+- **Volume rendering:** Slices, Bone, Soft tissue, and Skin modes with
+  independent intensity-shift and opacity controls.
+- **Single acquisition:** AP, PA, and lateral presets; exact patient-fixed
+  geometry; detector coverage checks; cancellable previews; and reusable saved
+  views.
+- **Batch acquisition:** configurable angle sweeps, 3D trajectory preview,
+  shared normalization, optional Float32 arrays, progress, and cancellation.
+- **Results and exports:** projection cine viewer, authoritative ZIP packages,
+  JSON manifests, runnable shell scripts, and configurable GIF or H.264 MP4
+  exports.
+- **CPU and accelerator backends:** automatic or explicit CPU, NVIDIA CUDA, and
+  Apple Silicon MPS selection using the environment that launched Studio.
+- **Session recovery and settings:** restore an active local session after a
+  refresh, choose the interface theme, and inspect the exact Python runtime and
+  compute devices.
 
-Refreshing the browser while the local server is still running presents an
-explicit option to restore the uploaded volume, viewer and acquisition state,
-saved views, active jobs, and results. Restarting the server clears this
-temporary session. Result manifests include the package version, creation
-time, input size, and SHA-256 checksum in addition to the acquisition geometry.
-
-The installable distribution is named `python-drr`; the Python import and CLI
-remain `pydrr`. See the [Studio User Guide](docs/studio-user-guide.md) for the
-complete workflow and the [Studio README](apps/studio/README.md) for
-installation and development instructions.
-
-The Performance panel reports the active Python executable and detected compute
-devices. Users can select automatic resolution or explicitly force CPU, CUDA,
-or MPS. Projection and batch workers run in isolated subprocesses using the
-same Python environment that launched Studio.
+See the [Studio User Guide](docs/studio-user-guide.md) for the complete workflow
+and the [Studio README](apps/studio/README.md) for development instructions.
 
 ## Repository layout
 
