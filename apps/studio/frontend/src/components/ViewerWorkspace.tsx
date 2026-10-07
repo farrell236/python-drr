@@ -313,15 +313,6 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
           </div>
         </section>
 
-        <section className="volume-facts">
-          <span className="eyebrow">Volume</span>
-          <dl>
-            <div><dt>Dimensions</dt><dd>{volume.shape_zyx[2]} × {volume.shape_zyx[1]} × {volume.shape_zyx[0]}</dd></div>
-            <div><dt>Spacing</dt><dd>{volume.spacing_zyx_mm[2].toFixed(2)} × {volume.spacing_zyx_mm[1].toFixed(2)} × {volume.spacing_zyx_mm[0].toFixed(2)} mm</dd></div>
-            <div><dt>Intensity</dt><dd>{rounded(volume.intensity_min)} to {rounded(volume.intensity_max)}</dd></div>
-          </dl>
-        </section>
-
         <section className="slice-navigation">
           <span className="eyebrow">Slice position</span>
           {(['axial', 'coronal', 'sagittal'] as SliceAxis[]).map((axis) => {
@@ -344,6 +335,15 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
             )
           })}
           <small>Scroll changes that plane; dragging navigates the other two.</small>
+        </section>
+
+        <section className="volume-facts">
+          <span className="eyebrow">Volume</span>
+          <dl>
+            <div><dt>Dimensions</dt><dd>{volume.shape_zyx[2]} × {volume.shape_zyx[1]} × {volume.shape_zyx[0]}</dd></div>
+            <div><dt>Spacing</dt><dd>{volume.spacing_zyx_mm[2].toFixed(2)} × {volume.spacing_zyx_mm[1].toFixed(2)} × {volume.spacing_zyx_mm[0].toFixed(2)} mm</dd></div>
+            <div><dt>Intensity</dt><dd>{rounded(volume.intensity_min)} to {rounded(volume.intensity_max)}</dd></div>
+          </dl>
         </section>
 
         <div className="viewer-controls-spacer" />
