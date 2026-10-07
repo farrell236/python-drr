@@ -98,7 +98,7 @@ export function ParameterPanel({ settings, busy, onChange, onRender, onCancel, o
   return (
     <aside className="parameter-panel">
       <header className="parameter-header">
-        <span><b>Acquisition</b><small>Exact values are stored with every result</small></span>
+        <span><b>Acquisition</b><small>Exact values stored with results</small></span>
         <div className="parameter-actions">
           <a className="icon-button" title="Download runnable shell script" aria-label="Download current acquisition as shell script" href={exportHref} download={exportFilename}><Share2 /></a>
           <button type="button" className="icon-button" title="Reset parameters" aria-label="Reset acquisition parameters" onClick={reset}><RotateCcw /></button>
