@@ -32,14 +32,15 @@ the installed commands are `pydrr` and `pydrr-studio`.
 ## Workspaces
 
 - **Viewer** uses a Slicer-style 2 × 2 layout with linked axial, coronal, and
-  sagittal slices plus an orbitable 3D context. The 3D view maps the current
-  images onto the active slice planes and shows the volume bounds and
-  acquisition isocenter. Physical orientation labels, CT window presets, slice
-  navigation, pan, zoom, and reset controls are included. Slice positions and
-  their linked sliders are grouped in the right sidebar so the four viewports
-  retain more image area. The four views form one continuous 2 × 2 viewing
-  surface with compact in-image labels. Clicking a slice positions the shared
-  acquisition isocenter.
+  sagittal slices plus an orbitable 3D context. The 3D view can show the active
+  textured slice planes or a GPU-rendered bone, soft-tissue, or skin preset.
+  Each rendering preset remembers its independent intensity shift and opacity,
+  while CT window controls remain specific to the three slice views. Rendering
+  data is loaded lazily as a bounded display copy; the original volume remains
+  unchanged for projection generation. Physical orientation labels, slice
+  navigation, pan, zoom, and reset controls are included. The four views form
+  one continuous 2 × 2 surface with compact in-image labels. Clicking a slice
+  positions the shared acquisition isocenter.
 - **Acquire** configures and renders a single projection from that isocenter.
 - **Batch** previews and executes an angle sweep with the active geometry.
 - **Results** lists completed projections and downloadable archives from the

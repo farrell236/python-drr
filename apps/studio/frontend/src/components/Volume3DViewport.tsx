@@ -1,12 +1,19 @@
 import { Box, RotateCcw } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import '@kitware/vtk.js/Rendering/Profiles/Geometry'
+import '@kitware/vtk.js/Rendering/Profiles/Volume'
 // @ts-expect-error vtk.js exposes a runtime default that is missing from its declaration file.
 import vtkImageHelper from '@kitware/vtk.js/Common/Core/ImageHelper'
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray'
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData'
+import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction'
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor'
 import vtkAxesActor from '@kitware/vtk.js/Rendering/Core/AxesActor'
+import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction'
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper'
 import vtkTexture from '@kitware/vtk.js/Rendering/Core/Texture'
+import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume'
+import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper'
 import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource'
 import vtkPlaneSource from '@kitware/vtk.js/Filters/Sources/PlaneSource'
 import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource'
@@ -15,16 +22,62 @@ import vtkInteractorStyleManipulator from '@kitware/vtk.js/Interaction/Style/Int
 import vtkGestureCameraManipulator from '@kitware/vtk.js/Interaction/Manipulators/GestureCameraManipulator'
 import vtkMouseCameraTrackballRotateManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballRotateManipulator'
 import vtkMouseCameraTrackballZoomManipulator from '@kitware/vtk.js/Interaction/Manipulators/MouseCameraTrackballZoomManipulator'
-import { volumeSliceUrl } from '../api'
-import type { VolumeInfo, VoxelZYX, WindowLevel } from '../types'
+import { getVolumeRenderData, volumeSliceUrl } from '../api'
+import type { VolumeInfo, VolumeRenderMode, VolumeRenderSettings, VoxelZYX, WindowLevel } from '../types'
 
 interface Props {
   volume: VolumeInfo
   voxel: VoxelZYX
   windowLevel: WindowLevel
+  rendering: VolumeRenderSettings
 }
 
 type Point3 = [number, number, number]
+type RenderPreset = Exclude<VolumeRenderMode, 'slices'>
+type VolumeLoadState = 'idle' | 'loading' | 'ready' | 'error'
+
+interface TransferPreset {
+  label: string
+  colors: Array<[number, number, number, number]>
+  opacities: Array<[number, number]>
+}
+
+const TRANSFER_PRESETS: Record<RenderPreset, TransferPreset> = {
+  bone: {
+    label: 'Bone',
+    colors: [
+      [-1000, 0.08, 0.06, 0.05],
+      [150, 0.32, 0.20, 0.14],
+      [450, 0.78, 0.66, 0.50],
+      [900, 0.95, 0.91, 0.80],
+      [2500, 1.0, 1.0, 0.98],
+    ],
+    opacities: [[-1000, 0], [150, 0], [300, 0.035], [700, 0.22], [1400, 0.52], [3000, 0.82]],
+  },
+  'soft-tissue': {
+    label: 'Soft tissue',
+    colors: [
+      [-1000, 0.14, 0.04, 0.03],
+      [-120, 0.35, 0.10, 0.08],
+      [20, 0.72, 0.34, 0.27],
+      [90, 0.95, 0.64, 0.52],
+      [350, 0.96, 0.83, 0.67],
+      [1200, 1.0, 0.98, 0.91],
+    ],
+    opacities: [[-1000, 0], [-180, 0], [-80, 0.018], [25, 0.075], [100, 0.15], [350, 0.12], [1000, 0.08], [2500, 0.04]],
+  },
+  skin: {
+    label: 'Skin',
+    colors: [
+      [-1000, 0.16, 0.03, 0.03],
+      [-220, 0.52, 0.14, 0.12],
+      [-80, 0.88, 0.42, 0.33],
+      [80, 1.0, 0.70, 0.58],
+      [450, 0.98, 0.82, 0.70],
+    ],
+    opacities: [[-1000, 0], [-280, 0], [-160, 0.012], [-70, 0.095], [80, 0.14], [300, 0.08], [900, 0.025], [2500, 0.01]],
+  },
+}
 
 function addActor(
   renderer: ReturnType<ReturnType<typeof vtkGenericRenderWindow.newInstance>['getRenderer']>,
@@ -51,6 +104,14 @@ function directionMatrix(direction: number[][]) {
   ] as never
 }
 
+function imageDirection(direction: number[][]) {
+  return [
+    direction[0][0], direction[1][0], direction[2][0],
+    direction[0][1], direction[1][1], direction[2][1],
+    direction[0][2], direction[1][2], direction[2][2],
+  ] as never
+}
+
 function directedPoint(direction: number[][], point: Point3): Point3 {
   return [
     direction[0][0] * point[0] + direction[0][1] * point[1] + direction[0][2] * point[2],
@@ -59,13 +120,25 @@ function directedPoint(direction: number[][], point: Point3): Point3 {
   ]
 }
 
-export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
+export function Volume3DViewport({ volume, voxel, windowLevel, rendering }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const resetCameraRef = useRef<() => void>(() => undefined)
   const updateSlicesRef = useRef<(next: VoxelZYX, nextWindowLevel: WindowLevel) => void>(() => undefined)
+  const updateRenderingRef = useRef<(next: VolumeRenderSettings) => void>(() => undefined)
+  const loadVolumeRef = useRef<() => Promise<void>>(async () => undefined)
+  const renderingRef = useRef(rendering)
+  const [loadState, setLoadState] = useState<VolumeLoadState>('idle')
+  const [loadError, setLoadError] = useState('')
+  renderingRef.current = rendering
 
   useEffect(() => {
     if (!containerRef.current) return
+    setLoadState('idle')
+    setLoadError('')
+    let disposed = false
+    let volumeReady = false
+    let localLoadState: VolumeLoadState = 'idle'
+    const abortController = new AbortController()
 
     const genericWindow = vtkGenericRenderWindow.newInstance({ background: [0.025, 0.04, 0.055] })
     genericWindow.setContainer(containerRef.current)
@@ -115,6 +188,25 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
     planeActors[2].getProperty().setEdgeColor(0.96, 0.77, 0.22)
     const planeTextures = planeActors.map(() => vtkTexture.newInstance({ interpolate: true, edgeClamp: true }))
 
+    const volumeMapper = vtkVolumeMapper.newInstance()
+    volumeMapper.setAutoAdjustSampleDistances(true)
+    volumeMapper.setInteractionSampleDistanceFactor(1.7)
+    const volumeActor = vtkVolume.newInstance()
+    volumeActor.setMapper(volumeMapper)
+    volumeActor.setVisibility(false)
+    const colorTransfer = vtkColorTransferFunction.newInstance()
+    const opacityTransfer = vtkPiecewiseFunction.newInstance()
+    const volumeProperty = volumeActor.getProperty()
+    volumeProperty.setRGBTransferFunction(0, colorTransfer)
+    volumeProperty.setScalarOpacity(0, opacityTransfer)
+    volumeProperty.setInterpolationTypeToLinear()
+    volumeProperty.setShade(true)
+    volumeProperty.setAmbient(0.25)
+    volumeProperty.setDiffuse(0.78)
+    volumeProperty.setSpecular(0.18)
+    volumeProperty.setSpecularPower(14)
+    renderer.addVolume(volumeActor)
+
     const isoRadius = Math.max(1.8, Math.min(sizeX, sizeY, sizeZ) * 0.018)
     const isoSource = vtkSphereSource.newInstance({ radius: isoRadius, thetaResolution: 20, phiResolution: 14 })
     const isoActor = addActor(renderer, isoSource, [0.93, 0.97, 1])
@@ -128,6 +220,63 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
     } as never)
     axesActor.setScale(axesLength, axesLength, axesLength)
     renderer.addActor(axesActor)
+
+    const applyRendering = (next: VolumeRenderSettings) => {
+      const showSlices = next.mode === 'slices' || (localLoadState === 'error' && !volumeReady)
+      planeActors.forEach((actor) => actor.setVisibility(showSlices))
+      volumeActor.setVisibility(!showSlices && volumeReady)
+      if (next.mode !== 'slices') {
+        const preset = TRANSFER_PRESETS[next.mode]
+        colorTransfer.removeAllPoints()
+        preset.colors.forEach(([value, red, green, blue]) => colorTransfer.addRGBPoint(value + next.shift, red, green, blue))
+        opacityTransfer.removeAllPoints()
+        preset.opacities.forEach(([value, opacity]) => opacityTransfer.addPoint(value + next.shift, Math.min(1, opacity * next.opacity)))
+      }
+      renderer.resetCameraClippingRange()
+      renderWindow.render()
+    }
+    updateRenderingRef.current = applyRendering
+
+    const loadVolume = async () => {
+      if (localLoadState === 'loading' || localLoadState === 'ready') return
+      localLoadState = 'loading'
+      setLoadState('loading')
+      setLoadError('')
+      try {
+        const renderData = await getVolumeRenderData(volume.id, abortController.signal)
+        if (disposed) return
+        const [dataX, dataY, dataZ] = renderData.dimensionsXYZ
+        const [spacingX, spacingY, spacingZ] = renderData.spacingXYZ
+        const imageData = vtkImageData.newInstance()
+        imageData.setDimensions(dataX, dataY, dataZ)
+        imageData.setSpacing([spacingX, spacingY, spacingZ])
+        imageData.setDirection(imageDirection(volume.direction))
+        imageData.setOrigin(directedPoint(volume.direction, [
+          -((dataX - 1) * spacingX) / 2,
+          -((dataY - 1) * spacingY) / 2,
+          -((dataZ - 1) * spacingZ) / 2,
+        ]))
+        imageData.getPointData().setScalars(vtkDataArray.newInstance({
+          name: 'CT intensity',
+          numberOfComponents: 1,
+          values: renderData.values,
+        }))
+        volumeMapper.setInputData(imageData)
+        volumeMapper.setSampleDistance(Math.max(0.35, Math.min(spacingX, spacingY, spacingZ) * 0.7))
+        volumeProperty.setScalarOpacityUnitDistance(0, Math.max(spacingX, spacingY, spacingZ))
+        volumeReady = true
+        localLoadState = 'ready'
+        setLoadState('ready')
+        applyRendering(renderingRef.current)
+      } catch (error) {
+        if (disposed || (error instanceof DOMException && error.name === 'AbortError')) return
+        localLoadState = 'error'
+        setLoadState('error')
+        setLoadError(error instanceof Error ? error.message : 'Could not prepare this volume for 3D rendering.')
+        applyRendering(renderingRef.current)
+      }
+    }
+    loadVolumeRef.current = loadVolume
 
     const textureUrls = ['', '', '']
     const textureRevisions = [0, 0, 0]
@@ -160,7 +309,7 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
         const image = new Image()
         image.decoding = 'async'
         image.onload = () => {
-          if (revision !== textureRevisions[axisIndex]) return
+          if (disposed || revision !== textureRevisions[axisIndex]) return
           const texture = planeTextures[axisIndex]
           texture.setInputData(vtkImageHelper.imageToImageData(image))
           if (!planeActors[axisIndex].hasTexture(texture)) planeActors[axisIndex].addTexture(texture)
@@ -173,6 +322,7 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
     }
     updateSlicesRef.current = updateSlices
     updateSlices(voxel, windowLevel)
+    applyRendering(renderingRef.current)
 
     const resetCamera = () => {
       const camera = renderer.getActiveCamera()
@@ -192,9 +342,13 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
     genericWindow.resize()
 
     return () => {
+      disposed = true
+      abortController.abort()
       observer.disconnect()
       resetCameraRef.current = () => undefined
       updateSlicesRef.current = () => undefined
+      updateRenderingRef.current = () => undefined
+      loadVolumeRef.current = async () => undefined
       interactionStyle.delete()
       genericWindow.delete()
     }
@@ -204,11 +358,18 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
     updateSlicesRef.current(voxel, windowLevel)
   }, [voxel, windowLevel])
 
+  useEffect(() => {
+    updateRenderingRef.current(rendering)
+    if (rendering.mode !== 'slices') void loadVolumeRef.current()
+  }, [rendering, volume.id])
+
+  const renderingLabel = rendering.mode === 'slices' ? 'Slice planes' : TRANSFER_PRESETS[rendering.mode].label
+
   return (
     <section className="mpr-panel viewer-3d-panel">
       <div className="viewer-3d-stage">
         <span className="viewport-label three-dimensional"><Box /> 3D</span>
-        <div ref={containerRef} className="viewer-3d-canvas" aria-label="Interactive three-dimensional volume and slice plane context" />
+        <div ref={containerRef} className="viewer-3d-canvas" aria-label={`Interactive three-dimensional ${renderingLabel.toLowerCase()} view`} />
         <div className="viewer-3d-toolbar" role="toolbar" aria-label="Three-dimensional viewer controls">
           <button type="button" onClick={() => resetCameraRef.current()} title="Reset to the default three-quarter view"><RotateCcw /> Reset</button>
         </div>
@@ -217,11 +378,19 @@ export function Volume3DViewport({ volume, voxel, windowLevel }: Props) {
           <span className="axis-y">Y · P</span>
           <span className="axis-z">Z · S</span>
         </div>
-        <div className="viewer-3d-legend viewer-3d-overlay-legend" aria-label="Slice plane colors">
-          <span className="axial">Axial</span>
-          <span className="coronal">Coronal</span>
-          <span className="sagittal">Sagittal</span>
-        </div>
+        {rendering.mode === 'slices' ? (
+          <div className="viewer-3d-legend viewer-3d-overlay-legend" aria-label="Slice plane colors">
+            <span className="axial">Axial</span>
+            <span className="coronal">Coronal</span>
+            <span className="sagittal">Sagittal</span>
+          </div>
+        ) : <span className="viewer-3d-render-badge">{renderingLabel} volume</span>}
+        {rendering.mode !== 'slices' && loadState === 'loading' && (
+          <div className="viewer-3d-loading"><span className="spinner" />Preparing volume…</div>
+        )}
+        {rendering.mode !== 'slices' && loadState === 'error' && (
+          <div className="viewer-3d-loading viewer-3d-error">{loadError}</div>
+        )}
         <span className="viewer-3d-hint">Drag to orbit · scroll to zoom</span>
       </div>
     </section>

@@ -1,4 +1,4 @@
-import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, VolumeInfo } from './types'
+import type { BatchSettings, JobInfo, RenderSettings, RuntimeInfo, VolumeInfo, VolumeRenderData } from './types'
 
 export function apiUrl(path: string) {
   return path
@@ -74,6 +74,36 @@ export function volumeSliceUrl(volumeId: string, axis: string, index: number, wi
     window_width: String(windowWidth),
   })
   return apiUrl(`/api/volumes/${encodeURIComponent(volumeId)}/slices/${axis}?${query}`)
+}
+
+function parseNumberTuple(value: string | null, label: string): [number, number, number] {
+  const parsed = value?.split(',').map(Number)
+  if (!parsed || parsed.length !== 3 || parsed.some((item) => !Number.isFinite(item))) {
+    throw new Error(`The local PyDRR service returned invalid ${label} metadata.`)
+  }
+  return parsed as [number, number, number]
+}
+
+export async function getVolumeRenderData(volumeId: string, signal?: AbortSignal): Promise<VolumeRenderData> {
+  let response: Response
+  try {
+    response = await fetch(apiUrl(`/api/volumes/${encodeURIComponent(volumeId)}/render-data`), { signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    throw new Error('Could not load the volume rendering data from the local PyDRR service.', { cause: error })
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error(errorDetail(payload.detail, `Volume data request failed with status ${response.status}`))
+  }
+  const dimensionsXYZ = parseNumberTuple(response.headers.get('X-PyDRR-Dimensions'), 'dimension')
+  const spacingXYZ = parseNumberTuple(response.headers.get('X-PyDRR-Spacing'), 'spacing')
+  const buffer = await response.arrayBuffer()
+  const expectedBytes = dimensionsXYZ.reduce((product, value) => product * value, 1) * Float32Array.BYTES_PER_ELEMENT
+  if (buffer.byteLength !== expectedBytes) {
+    throw new Error('The local PyDRR service returned incomplete volume rendering data.')
+  }
+  return { values: new Float32Array(buffer), dimensionsXYZ, spacingXYZ }
 }
 
 export async function createRender(settings: RenderSettings): Promise<{ id: string }> {

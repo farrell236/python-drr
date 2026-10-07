@@ -2,6 +2,19 @@ export type Workspace = 'viewer' | 'acquire' | 'batch' | 'results'
 export type BackendName = 'auto' | 'cpu' | 'cuda' | 'mps'
 export type SliceAxis = 'axial' | 'coronal' | 'sagittal'
 export type VoxelZYX = [number, number, number]
+export type VolumeRenderMode = 'slices' | 'bone' | 'soft-tissue' | 'skin'
+
+export interface VolumeRenderSettings {
+  mode: VolumeRenderMode
+  shift: number
+  opacity: number
+}
+
+export interface VolumeRenderData {
+  values: Float32Array
+  dimensionsXYZ: [number, number, number]
+  spacingXYZ: [number, number, number]
+}
 
 export interface WindowLevel {
   center: number

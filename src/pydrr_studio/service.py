@@ -51,6 +51,42 @@ def normalize_slice(
     return np.clip((image.astype(np.float32) - low) / (high - low), 0.0, 1.0)
 
 
+def downsample_volume_for_rendering(
+    data: np.ndarray,
+    spacing_zyx_mm: np.ndarray,
+    *,
+    max_dimension: int = 256,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Create a bounded display copy while preserving the physical extent."""
+    if data.ndim != 3:
+        raise ValueError("Volume rendering requires a three-dimensional image")
+    if max_dimension < 32:
+        raise ValueError("max_dimension must be at least 32")
+
+    shape = np.asarray(data.shape, dtype=int)
+    scale = min(1.0, float(max_dimension) / float(shape.max()))
+    target_shape = np.array(
+        [size if size <= 1 else max(2, min(size, int(round(size * scale)))) for size in shape],
+        dtype=int,
+    )
+    indices = [
+        np.rint(np.linspace(0, size - 1, target, dtype=np.float64)).astype(np.intp)
+        for size, target in zip(shape, target_shape, strict=True)
+    ]
+    sampled = np.asarray(data[np.ix_(*indices)], dtype="<f4", order="C")
+    if not np.isfinite(sampled).all():
+        finite = sampled[np.isfinite(sampled)]
+        replacement = float(np.median(finite)) if finite.size else 0.0
+        sampled = np.nan_to_num(sampled, nan=replacement, posinf=replacement, neginf=replacement)
+
+    spacing = np.asarray(spacing_zyx_mm, dtype=np.float64)
+    rendered_spacing = spacing.copy()
+    for axis, (source_size, target_size) in enumerate(zip(shape, target_shape, strict=True)):
+        if source_size > 1 and target_size > 1:
+            rendered_spacing[axis] *= (source_size - 1) / (target_size - 1)
+    return sampled, rendered_spacing.astype(np.float32)
+
+
 def build_geometry(vol: Volume, settings: RenderSettings) -> tuple[DRRGeometry, np.ndarray]:
     iso_center = volume_center_world_xyz(vol) + np.array(
         [settings.translate_x_mm, settings.translate_y_mm, settings.translate_z_mm],
@@ -255,6 +291,23 @@ OUTPUT_IMAGE="${{2:-$SCRIPT_DIR/{output_filename}}}"
         )
         output = imageio.imwrite("<bytes>", np.flipud(normalized * 255).astype(np.uint8), format="png")
         return output
+
+    def volume_render_data(
+        self,
+        volume_id: str,
+        *,
+        max_dimension: int = 256,
+    ) -> tuple[bytes, tuple[int, int, int], tuple[float, float, float]]:
+        """Return a little-endian float32 display volume and its XYZ geometry."""
+        volume = self.get_volume(volume_id).volume
+        sampled, spacing_zyx = downsample_volume_for_rendering(
+            volume.data,
+            volume.spacing_zyx,
+            max_dimension=max_dimension,
+        )
+        dimensions_xyz = tuple(int(value) for value in sampled.shape[::-1])
+        spacing_xyz = tuple(float(value) for value in spacing_zyx[::-1])
+        return sampled.tobytes(order="C"), dimensions_xyz, spacing_xyz
 
     def create_render(self, settings: RenderSettings) -> JobRecord:
         self.get_volume(settings.volume_id)

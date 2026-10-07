@@ -90,6 +90,31 @@ def volume_slice(
     return Response(content=content, media_type="image/png")
 
 
+@app.get("/api/volumes/{volume_id}/render-data")
+def volume_render_data(
+    volume_id: str,
+    max_dimension: int = Query(256, ge=32, le=384),
+) -> Response:
+    try:
+        content, dimensions_xyz, spacing_xyz = service.volume_render_data(
+            volume_id,
+            max_dimension=max_dimension,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Volume not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={
+            "X-PyDRR-Dimensions": ",".join(str(value) for value in dimensions_xyz),
+            "X-PyDRR-Spacing": ",".join(f"{value:.9g}" for value in spacing_xyz),
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
 @app.post("/api/renders", response_model=JobCreated, status_code=202)
 def create_render(settings: RenderSettings) -> JobCreated:
     try:

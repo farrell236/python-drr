@@ -2,7 +2,7 @@ import { Crosshair, LocateFixed, RotateCcw, ScanLine, ZoomIn, ZoomOut } from 'lu
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import { volumeSliceUrl } from '../api'
-import type { RenderSettings, SliceAxis, VolumeInfo, VoxelZYX, WindowLevel } from '../types'
+import type { RenderSettings, SliceAxis, VolumeInfo, VolumeRenderMode, VolumeRenderSettings, VoxelZYX, WindowLevel } from '../types'
 import { clampVoxel, orientationLabels, planeGeometry, planePointToVoxel, voxelToPlanePoint, voxelToWorld, worldToVoxel } from '../viewerGeometry'
 import { Volume3DViewport } from './Volume3DViewport'
 
@@ -35,6 +35,21 @@ const AXIS_NAMES: Record<SliceAxis, string> = {
   axial: 'Axial',
   coronal: 'Coronal',
   sagittal: 'Sagittal',
+}
+
+type AdjustableRenderMode = Exclude<VolumeRenderMode, 'slices'>
+
+const VOLUME_RENDER_OPTIONS: Array<{ mode: VolumeRenderMode; label: string }> = [
+  { mode: 'slices', label: 'Slices' },
+  { mode: 'bone', label: 'Bone' },
+  { mode: 'soft-tissue', label: 'Soft tissue' },
+  { mode: 'skin', label: 'Skin' },
+]
+
+const DEFAULT_RENDER_CONTROLS: Record<AdjustableRenderMode, { shift: number; opacity: number }> = {
+  bone: { shift: 0, opacity: 1 },
+  'soft-tissue': { shift: 0, opacity: 1 },
+  skin: { shift: 0, opacity: 1 },
 }
 
 function rounded(value: number, digits = 2) {
@@ -163,6 +178,8 @@ function SliceViewport({ axis, volume, voxel, windowLevel, onVoxelChange }: Slic
 }
 
 export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelChange, onIsocenterChange, onOpenAcquire }: ViewerProps) {
+  const [volumeRenderMode, setVolumeRenderMode] = useState<VolumeRenderMode>('slices')
+  const [volumeRenderControls, setVolumeRenderControls] = useState(DEFAULT_RENDER_CONTROLS)
   const isocenterWorld = useMemo<[number, number, number]>(() => [
     volume.center_world_xyz_mm[0] + settings.translate_x_mm,
     volume.center_world_xyz_mm[1] + settings.translate_y_mm,
@@ -177,6 +194,32 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
     { name: 'Bone', center: 500, width: 2000 },
     { name: 'Full', center: (volume.intensity_min + volume.intensity_max) / 2, width: intensityRange },
   ]
+  const adjustableRenderMode = volumeRenderMode === 'slices' ? null : volumeRenderMode
+  const volumeRendering: VolumeRenderSettings = adjustableRenderMode
+    ? { mode: adjustableRenderMode, ...volumeRenderControls[adjustableRenderMode] }
+    : { mode: 'slices', shift: 0, opacity: 1 }
+  const shiftLimit = Math.max(500, Math.min(3000, Math.ceil(intensityRange / 2 / 100) * 100))
+
+  useEffect(() => {
+    setVolumeRenderMode('slices')
+    setVolumeRenderControls(DEFAULT_RENDER_CONTROLS)
+  }, [volume.id])
+
+  const setVolumeRenderControl = (field: 'shift' | 'opacity', value: number) => {
+    if (!adjustableRenderMode) return
+    setVolumeRenderControls((current) => ({
+      ...current,
+      [adjustableRenderMode]: { ...current[adjustableRenderMode], [field]: value },
+    }))
+  }
+
+  const resetVolumeRenderControls = () => {
+    if (!adjustableRenderMode) return
+    setVolumeRenderControls((current) => ({
+      ...current,
+      [adjustableRenderMode]: DEFAULT_RENDER_CONTROLS[adjustableRenderMode],
+    }))
+  }
 
   const setVoxel = (nextVoxel: VoxelZYX) => {
     const clamped = clampVoxel(volume, nextVoxel)
@@ -203,7 +246,7 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
         {(['axial', 'coronal', 'sagittal'] as SliceAxis[]).map((axis) => (
           <SliceViewport key={axis} axis={axis} volume={volume} voxel={voxel} windowLevel={windowLevel} onVoxelChange={setVoxel} />
         ))}
-        <Volume3DViewport volume={volume} voxel={voxel} windowLevel={windowLevel} />
+        <Volume3DViewport volume={volume} voxel={voxel} windowLevel={windowLevel} rendering={volumeRendering} />
       </div>
 
       <aside className="viewer-controls">
@@ -230,18 +273,66 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
           </label>
         </section>
 
-        <section>
-          <span className="eyebrow">Acquisition isocenter</span>
-          <div className="isocenter-card">
-            <LocateFixed />
-            <span><b>Voxel Z {rounded(voxel[0], 1)} · Y {rounded(voxel[1], 1)} · X {rounded(voxel[2], 1)}</b><small>Click any plane to update all three views.</small></span>
+        <section className="volume-render-controls">
+          <span className="eyebrow">Volume render</span>
+          <div className="volume-render-modes" role="group" aria-label="Three-dimensional rendering mode">
+            {VOLUME_RENDER_OPTIONS.map((option) => (
+              <button
+                type="button"
+                className={volumeRenderMode === option.mode ? 'active' : ''}
+                key={option.mode}
+                aria-pressed={volumeRenderMode === option.mode}
+                onClick={() => setVolumeRenderMode(option.mode)}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
-          <dl className="coordinate-list">
-            <div><dt>X</dt><dd>{rounded(isocenterWorld[0])} mm</dd></div>
-            <div><dt>Y</dt><dd>{rounded(isocenterWorld[1])} mm</dd></div>
-            <div><dt>Z</dt><dd>{rounded(isocenterWorld[2])} mm</dd></div>
-          </dl>
-          <button type="button" className="button secondary full" onClick={centerIsocenter}><RotateCcw /> Center in volume</button>
+          {adjustableRenderMode ? (
+            <>
+              <label className="viewer-slider">
+                <span>Intensity shift <output>{volumeRenderControls[adjustableRenderMode].shift > 0 ? '+' : ''}{volumeRenderControls[adjustableRenderMode].shift} HU</output></span>
+                <input
+                  aria-label="Volume rendering intensity shift"
+                  type="range"
+                  min={-shiftLimit}
+                  max={shiftLimit}
+                  step={10}
+                  value={volumeRenderControls[adjustableRenderMode].shift}
+                  onChange={(event) => setVolumeRenderControl('shift', Number(event.target.value))}
+                />
+              </label>
+              <label className="viewer-slider">
+                <span>Opacity <output>{Math.round(volumeRenderControls[adjustableRenderMode].opacity * 100)}%</output></span>
+                <input
+                  aria-label="Volume rendering opacity"
+                  type="range"
+                  min={0.1}
+                  max={2}
+                  step={0.05}
+                  value={volumeRenderControls[adjustableRenderMode].opacity}
+                  onChange={(event) => setVolumeRenderControl('opacity', Number(event.target.value))}
+                />
+              </label>
+              <button type="button" className="render-reset" onClick={resetVolumeRenderControls}><RotateCcw /> Reset preset</button>
+            </>
+          ) : <small className="volume-render-hint">Shows the three linked textured slice planes.</small>}
+        </section>
+
+        <section className="isocenter-section">
+          <span className="eyebrow">Acquisition isocenter</span>
+          <div className="isocenter-compact">
+            <LocateFixed />
+            <dl>
+              <div><dt>World</dt><dd>{rounded(isocenterWorld[0])} · {rounded(isocenterWorld[1])} · {rounded(isocenterWorld[2])} mm</dd></div>
+              <div><dt>Voxel</dt><dd>{rounded(voxel[2], 1)} · {rounded(voxel[1], 1)} · {rounded(voxel[0], 1)}</dd></div>
+            </dl>
+          </div>
+          <small className="isocenter-hint">Values are X · Y · Z. Click any slice to reposition.</small>
+          <div className="isocenter-actions">
+            <button type="button" className="button secondary" onClick={centerIsocenter}><RotateCcw /> Center</button>
+            <button type="button" className="button primary" onClick={onOpenAcquire}><Crosshair /> Use in Acquire</button>
+          </div>
         </section>
 
         <section className="volume-facts">
@@ -278,7 +369,6 @@ export function ViewerWorkspace({ volume, settings, windowLevel, onWindowLevelCh
         </section>
 
         <div className="viewer-controls-spacer" />
-        <button type="button" className="button primary full" onClick={onOpenAcquire}><Crosshair /> Use isocenter in Acquire</button>
       </aside>
     </main>
   )
