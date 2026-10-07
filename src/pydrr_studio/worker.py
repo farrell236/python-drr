@@ -103,7 +103,7 @@ def _metadata(
 ) -> dict[str, Any]:
     orbit_frame = make_orbit_frame(settings.orbit_tilt_x_deg, settings.orbit_tilt_y_deg)
     return {
-        "geometry_convention": "pydrr-orbit-frame-v1",
+        "geometry_convention": "pydrr-orbit-frame-v2",
         "volume_id": volume_id,
         "volume_filename": filename,
         "settings": settings.model_dump(),
@@ -217,7 +217,7 @@ def _run_batch(spec: dict[str, Any], output_dir: Path, volume: Volume) -> dict[s
 
     manifest = {
         "kind": "angle_sweep",
-        "geometry_convention": "pydrr-orbit-frame-v1",
+        "geometry_convention": "pydrr-orbit-frame-v2",
         "volume": _volume_info(volume, spec["volume_id"], spec["volume_filename"]),
         "angles_deg": angles,
         "shared_normalization": settings.shared_normalization,

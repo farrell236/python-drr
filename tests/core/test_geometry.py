@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from pydrr.geometry import make_orbit_frame, make_orbit_pose
+from pydrr.geometry import detector_pixel_centers_world, make_orbit_frame, make_orbit_pose
 
 
 class OrbitGeometryTests(unittest.TestCase):
@@ -62,6 +62,31 @@ class OrbitGeometryTests(unittest.TestCase):
             shifted.detector_center_mm - base.detector_center_mm,
             expected_shift,
             atol=1e-5,
+        )
+
+    def test_detector_rows_follow_image_top_to_bottom_convention(self):
+        geometry = make_orbit_pose(
+            np.zeros(3),
+            0.0,
+            detector_size_px=(3, 3),
+            detector_spacing_mm=(2.0, 4.0),
+        )
+
+        pixels = detector_pixel_centers_world(geometry)
+        np.testing.assert_allclose(
+            pixels[0, 1],
+            geometry.detector_center_mm + 2.0 * geometry.detector_v_mm,
+            atol=1e-6,
+        )
+        np.testing.assert_allclose(
+            pixels[2, 1],
+            geometry.detector_center_mm - 2.0 * geometry.detector_v_mm,
+            atol=1e-6,
+        )
+        np.testing.assert_allclose(
+            pixels[1, 0],
+            geometry.detector_center_mm - 4.0 * geometry.detector_u_mm,
+            atol=1e-6,
         )
 
 

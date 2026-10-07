@@ -169,11 +169,16 @@ def make_circular_orbit_pose(
 
 
 def detector_pixel_centers_world(geom: DRRGeometry) -> np.ndarray:
-    """Return detector pixel centers as an array of shape (H, W, 3)."""
+    """Return detector pixel centers as an image array of shape ``(H, W, 3)``.
+
+    Image rows run from the positive detector V direction at the top to the
+    negative V direction at the bottom. Columns run from negative detector U
+    at the left to positive U at the right.
+    """
     H, W = geom.detector_size_px
     row_spacing, col_spacing = geom.detector_spacing_mm
 
-    rows = np.arange(H, dtype=np.float32) - (H - 1) / 2.0
+    rows = (H - 1) / 2.0 - np.arange(H, dtype=np.float32)
     cols = np.arange(W, dtype=np.float32) - (W - 1) / 2.0
     rr, cc = np.meshgrid(rows, cols, indexing="ij")
 

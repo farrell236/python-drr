@@ -90,7 +90,9 @@ PyDRR uses a patient-fixed orbit frame. Projection angle selects the source
 position within that frame, X/Y tilts orient the orbit plane in physical world
 coordinates, and detector roll rotates the panel around the central ray.
 SimpleITK direction matrices are applied during world/voxel conversion and ray
-tracing.
+tracing. Projection arrays follow image coordinates: row zero is the positive
+detector V edge (the physical top), and column zero is the negative detector U
+edge (the physical left).
 
 The former `-rp` argument remains an alias for `--projection-angle`. Legacy
 `-rx`, `-ry`, and `-rz` arguments retain their earlier acquisition-rotation
