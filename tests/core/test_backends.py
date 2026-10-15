@@ -5,6 +5,8 @@ from unittest import mock
 import numpy as np
 
 from pydrr.backends import BackendStatus, resolve_backend
+from pydrr.backends import cuda as cuda_backend
+from pydrr.backends.registry import _cuda_status
 from pydrr.attenuation import transform_voxel_value
 from pydrr.backends.cpu import ray_integral_siddon_jacobs
 from pydrr.backends.mps import _prepare_volume_torch, _render_drr_torch
@@ -79,6 +81,88 @@ class ProjectionModelTests(unittest.TestCase):
             **kwargs,
         )
         np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-4)
+
+
+class CudaThresholdTests(unittest.TestCase):
+    class _FakeCupy:
+        float32 = np.float32
+
+        @staticmethod
+        def asarray(value, dtype=None):
+            return np.asarray(value, dtype=dtype)
+
+        @staticmethod
+        def zeros(shape, dtype=None):
+            return np.zeros(shape, dtype=dtype)
+
+        @staticmethod
+        def asnumpy(value):
+            return np.asarray(value)
+
+    def setUp(self):
+        self.volume = Volume(
+            data=np.full((16, 16, 16), -950.0, dtype=np.float32),
+            spacing_zyx=np.full(3, 2.0, dtype=np.float32),
+            origin_zyx=np.zeros(3, dtype=np.float32),
+            direction=np.eye(3, dtype=np.float32),
+        )
+        self.geometry = make_orbit_pose(
+            iso_center_mm=volume_center_world_xyz(self.volume),
+            projection_angle_deg=0.0,
+            sid_mm=100.0,
+            idd_mm=100.0,
+            detector_size_px=(1, 1),
+            detector_spacing_mm=(1.0, 1.0),
+        )
+
+    def test_cuda_kernel_argument_preserves_disabled_and_numeric_thresholds(self):
+        for threshold, expected in ((None, -np.inf), (-875.0, -875.0)):
+            with self.subTest(threshold=threshold):
+                kernel = mock.Mock()
+                with (
+                    mock.patch.object(cuda_backend, "_require_cupy", return_value=self._FakeCupy),
+                    mock.patch.object(cuda_backend, "_cuda_kernel", return_value=kernel),
+                ):
+                    cuda_backend.render_drr_cuda(
+                        self.volume,
+                        self.geometry,
+                        hu_air_threshold=threshold,
+                        projection_model="relative_attenuation",
+                        prepared_volume={"data": self.volume.data},
+                    )
+
+                kernel_args = kernel.call_args.args[2]
+                if np.isneginf(expected):
+                    self.assertTrue(np.isneginf(kernel_args[15]))
+                else:
+                    self.assertEqual(kernel_args[15], np.float32(expected))
+
+    def test_cuda_matches_cpu_for_air_phantom(self):
+        status = _cuda_status()
+        if not status.available:
+            self.skipTest(status.detail)
+
+        for threshold in (None, -900.0, -np.inf):
+            with self.subTest(threshold=threshold):
+                kwargs = {
+                    "hu_air_threshold": threshold,
+                    "projection_model": "relative_attenuation",
+                }
+                expected = generate_drr(
+                    self.volume,
+                    self.geometry,
+                    backend="cpu",
+                    show_progress=False,
+                    projector_kwargs=kwargs,
+                )
+                actual = generate_drr(
+                    self.volume,
+                    self.geometry,
+                    backend="cuda",
+                    show_progress=False,
+                    projector_kwargs=kwargs,
+                )
+                np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-4)
 
 
 class CpuProjectorEfficiencyTests(unittest.TestCase):

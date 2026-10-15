@@ -307,7 +307,7 @@ def render_drr_cuda(
         np.float32(source_y),
         np.float32(source_z),
         np.int32(N),
-        np.float32(-900.0 if hu_air_threshold is None else hu_air_threshold),
+        np.float32(-np.inf if hu_air_threshold is None else hu_air_threshold),
         np.int32(1 if clamp_negative_to_zero else 0),
         np.int32(1 if projection_model == "relative_attenuation" else 0),
         out_gpu,
